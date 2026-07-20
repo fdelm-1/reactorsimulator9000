@@ -47,6 +47,12 @@ class System:
     LEVER_DELTA_FACTORS = [0.01, 0.005, 0.0025]
     LEVER_FACTOR = 0.75
 
+    # Whether the control-rod levers drive k_eff by default ('8' toggles this in-game).
+    # update_pygame_keff_from_levers() sets k_eff purely from the current lever position,
+    # so it must be off wherever there's no real lever - otherwise it overwrites the
+    # keyboard w/s increments back to neutral every frame.
+    USE_LEVERS_BY_DEFAULT = True
+
     def __init__(self, framerate=30, pk_n_animation=False, complexity_level=1) -> None:
         self.frame_rate = framerate
         self.frame_time = 1 / framerate
@@ -337,7 +343,7 @@ class System:
 
     def _game_loop(self):
         lever_origin_rel_pos = list(self.panel_states.control_rod_lever_rel_pos.values())
-        use_levers_flag = True
+        use_levers_flag = self.USE_LEVERS_BY_DEFAULT
         show_quit_popup = False
         restart_flag = False
         quit_restart_message = "Press '3D' to quit\nor '1D' to restart.\nAny other key to continue"
