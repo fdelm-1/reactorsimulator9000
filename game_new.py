@@ -16,6 +16,8 @@ from point_kinetics import PointKinetics
 environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"
 import pygame  # noqa: E402  (must import after PYGAME_HIDE_SUPPORT_PROMPT is set)
 
+raw_scores = open("raw_scores.txt", "w")
+
 
 WIDTH, HEIGHT = 1920, 1080
 POPUP_WIDTH, POPUP_HEIGHT = 800, 600
@@ -448,6 +450,7 @@ class System:
                           "stable for 20 seconds at 200 MW!")
                     print("You have helped to keep the country's lights on!")
                     print("Press 'q' or 'escape' to quit.")
+                    raw_scores.write(f"{self.time_at_target_condition:.2f}\n")
                     self._end_game()
                     victory_flag = True
                     if self.pk_n_animation:
