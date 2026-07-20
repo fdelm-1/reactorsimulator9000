@@ -41,6 +41,12 @@ class System:
     FAILURE_POWER_MW = 250
     FAILURE_ZONE_TOP_MW = 500  # how far up the graph's red danger band is drawn
 
+    # Fixed graph y-axis range in MW. Kept constant (no per-frame autoscaling from the
+    # data's min/max) so the view never "zooms" and set_ylim() is only called once -
+    # this was a meaningful chunk of the matplotlib redraw cost per frame on the Pi.
+    Y_AXIS_MIN_MW = 0
+    Y_AXIS_MAX_MW = 300
+
     MIN_ALLOWABLE_K_EFF = 0.975
     MAX_ALLOWABLE_BETA_FRACTION = 0.95
 
@@ -138,7 +144,6 @@ class System:
         self.pk.enable_n_history(self.N_HISTORY_WINDOW_S, self.frame_time)
 
         upper_time_bound = 0.5 * self.N_HISTORY_WINDOW_S
-        self._dynamic_bound_factor = 1.1
 
         fm.fontManager.addfont(FONT_PATH)
         self.custom_font = fm.FontProperties(fname=FONT_PATH)
@@ -166,6 +171,10 @@ class System:
         ax.set_xlim(*t_lims)
         self._t_lims = t_lims
 
+        # Fixed range, set once - never rescaled per frame.
+        ax.set_ylim(self.Y_AXIS_MIN_MW, self.Y_AXIS_MAX_MW)
+        self._y_range = self.Y_AXIS_MAX_MW - self.Y_AXIS_MIN_MW
+
         self.pk_n_line = ax.plot(
             self.pk.n_history_time_window,
             self.pk.n_history_solutions,
@@ -183,15 +192,14 @@ class System:
                        self.FAILURE_ZONE_TOP_MW, self.FAILURE_ZONE_TOP_MW],
                 color="red", alpha=0.5)
 
-        bf = self._dynamic_bound_factor
         text_x = t_lims[0] + 0.70 * t_range
-        self.power_text = ax.text(text_x, (1 / bf) + 0.95 * (bf - 1 / bf),
+        self.power_text = ax.text(text_x, self.Y_AXIS_MIN_MW + 0.95 * self._y_range,
                                    self._power_str(self.pk.n), color=GREEN, fontproperties=self.custom_font)
-        self.keff_text = ax.text(text_x, (1 / bf) + 0.90 * (bf - 1 / bf),
+        self.keff_text = ax.text(text_x, self.Y_AXIS_MIN_MW + 0.90 * self._y_range,
                                   self._keff_str(self.k_eff), color=GREEN, fontproperties=self.custom_font)
-        self.target_time_text = ax.text(text_x, (1 / bf) + 0.85 * (bf - 1 / bf),
+        self.target_time_text = ax.text(text_x, self.Y_AXIS_MIN_MW + 0.82 * self._y_range,
                                          self._time_at_target_str(0.0), color=GREEN, fontproperties=self.custom_font)
-        self.elapsed_time_text = ax.text(text_x, (1 / bf) + 0.80 * (bf - 1 / bf),
+        self.elapsed_time_text = ax.text(text_x, self.Y_AXIS_MIN_MW + 0.78 * self._y_range,
                                           self._time_elapsed_str(0.0), color=GREEN, fontproperties=self.custom_font)
 
         self.ax = ax
@@ -235,12 +243,6 @@ class System:
         self.pk_n_line.set_ydata(self.pk.n_history_solutions)
         self.pk_n_line.set_xdata(self.pk.n_history_time_window)
 
-        n_min, n_max = np.min(self.pk.n_history_solutions), np.max(self.pk.n_history_solutions)
-        bf = self._dynamic_bound_factor
-        y_lims = n_min / bf, n_max * bf
-        y_range = y_lims[1] - y_lims[0]
-        self.ax.set_ylim(*y_lims)
-
         elapsed = time.time() - self.graph_start_time
         self.pk.n_history_time_window = np.linspace(elapsed - 6, elapsed - 1, 151)
         self.ax.set_xlim(elapsed - 5, elapsed)
@@ -249,17 +251,18 @@ class System:
         t_range = t_lims[1] - t_lims[0]
         text_x = t_lims[0] + 0.02 * t_range + elapsed
 
+        # Y-axis is fixed (see _init_graph), so only the x position needs updating each frame.
         self.power_text.set_text(self._power_str(self.pk.n))
-        self.power_text.set_position((text_x, y_lims[0] + 0.95 * y_range))
+        self.power_text.set_x(text_x)
 
         self.keff_text.set_text(self._keff_str(self.k_eff))
-        self.keff_text.set_position((text_x, y_lims[0] + 0.90 * y_range))
+        self.keff_text.set_x(text_x)
 
         self.target_time_text.set_text(self._time_at_target_str(self.time_at_target_condition))
-        self.target_time_text.set_position((text_x, y_lims[0] + 0.82 * y_range))
+        self.target_time_text.set_x(text_x)
 
         self.elapsed_time_text.set_text(self._time_elapsed_str(elapsed))
-        self.elapsed_time_text.set_position((text_x, y_lims[0] + 0.78 * y_range))
+        self.elapsed_time_text.set_x(text_x)
 
         self.canvas.draw()
         renderer = self.canvas.get_renderer()
@@ -340,8 +343,11 @@ class System:
         self.pk.reset_sol()
 
     def _record_score(self):
+        # time_at_target_condition is always ~TARGET_HOLD_TIME_S (the win threshold), so it
+        # doesn't distinguish scores - log total time elapsed since the game started instead.
+        total_elapsed = time.time() - self.graph_start_time
         with open("raw_scores.txt", "a") as raw_scores:
-            raw_scores.write("{:.3f},{}\n".format(self.time_at_target_condition, "Placeholdername"))
+            raw_scores.write("{:.3f},{}\n".format(total_elapsed, "Placeholdername"))
 
     # -- Main loop ----------------------------------------------------------
 
