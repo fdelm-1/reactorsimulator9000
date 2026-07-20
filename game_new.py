@@ -119,6 +119,7 @@ class System:
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         pygame.display.set_caption("Reactor Simulator 9000")
         self.clock = pygame.time.Clock()
+        self.fps_font = pygame.font.Font(FONT_PATH, 20)
 
         self.pygame_k_eff = 1.000
         self.inc = 0.00005 * 30 / self.frame_rate
@@ -282,6 +283,10 @@ class System:
 
         self.screen.blit(popup_surface, (WIDTH // 2 - max_width // 2, HEIGHT // 2 - total_height // 2))
         pygame.display.flip()
+
+    def _draw_fps(self):
+        fps_surface = self.fps_font.render(f"FPS: {self.clock.get_fps():.1f}", True, WHITE)
+        self.screen.blit(fps_surface, (10, 10))
 
     def _update_leds(self, scramming, at_target):
         led_names = list(self.panel_states.LED_strips.keys())
@@ -482,6 +487,8 @@ class System:
 
             if self.scramming and self.pygame_k_eff == self.MIN_ALLOWABLE_K_EFF:
                 self.scramming = False
+
+            self._draw_fps()
 
             # Wait for the next frame
             self.clock.tick(self.frame_rate)
