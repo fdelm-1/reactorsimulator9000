@@ -4,7 +4,6 @@ import time
 import threading
 from os import environ
 
-import numpy as np
 import matplotlib
 import matplotlib.backends.backend_agg as agg
 import matplotlib.font_manager as fm
@@ -58,11 +57,19 @@ class System:
     MIN_ALLOWABLE_K_EFF = 0.975
     MAX_ALLOWABLE_BETA_FRACTION = 0.95
 
-    # Lever positions in isolation: left ~0.98-1.02, middle ~0.99-1.01, right ~0.995-1.005
-    # giving an overall possible k_eff range of roughly 0.965 to 1.035.
-    LEVER_DEADZONE_RANGE = [(0.763, 0.87)] * 3
-    LEVER_DELTA_FACTORS = [0.01, 0.005, 0.0025]
-    LEVER_FACTOR = 0.75
+    # Deadzone (neutral) band is centred a third of the way up each lever's travel,
+    # same total width as before, just recentred.
+    LEVER_MEDIAN_REL_POS = 1 / 3
+    LEVER_DEADZONE_HALF_WIDTH = 0.0535
+    LEVER_DEADZONE_RANGE = [(LEVER_MEDIAN_REL_POS - LEVER_DEADZONE_HALF_WIDTH,
+                             LEVER_MEDIAN_REL_POS + LEVER_DEADZONE_HALF_WIDTH)] * 3
+
+    # k_eff reached when a given lever is pushed to the bottom/top of its travel while
+    # the other two levers sit at their median (deadzone centre). Left, middle, right.
+    # Overall combined range (all three levers pushed the same way at once) is
+    # roughly 0.965 to 1.07.
+    LEVER_MAX_K_EFF = [1.04, 1.02, 1.01]
+    LEVER_MIN_K_EFF = [0.98, 0.99, 0.995]
 
     # Whether the control-rod levers drive k_eff by default ('8' toggles this in-game).
     # update_pygame_keff_from_levers() sets k_eff purely from the current lever position,
@@ -107,7 +114,6 @@ class System:
 
     def update_pygame_keff_from_levers(self, lever_current_rel_pos, lever_origin_rel_pos=(0.75, 0.75, 0.75)):
         """Nudge k_eff based on how far each lever sits outside its central deadzone."""
-        deltas = [self.LEVER_FACTOR * factor for factor in self.LEVER_DELTA_FACTORS]
         temp_k_eff = 1.0
 
         for i, rel_pos in enumerate(lever_current_rel_pos):
@@ -117,15 +123,15 @@ class System:
                 ##!! IN DEADZONE - do not update k_eff
                 self.lever_deadzone_states[i] = 0
             elif rel_pos < low:
-                ##!! BELOW LOW DEADZONE - increase k_eff
+                ##!! BELOW LOW DEADZONE - increase k_eff towards LEVER_MAX_K_EFF[i]
                 self.lever_deadzone_states[i] = -1
                 diff = low - rel_pos
-                temp_k_eff += deltas[i] * diff / low
+                temp_k_eff += (self.LEVER_MAX_K_EFF[i] - 1.0) * diff / low
             else:
-                ##!! ABOVE HIGH DEADZONE - decrease k_eff
+                ##!! ABOVE HIGH DEADZONE - decrease k_eff towards LEVER_MIN_K_EFF[i]
                 self.lever_deadzone_states[i] = 1
                 diff = rel_pos - high
-                temp_k_eff -= deltas[i] * diff / (1 - high)
+                temp_k_eff -= (1.0 - self.LEVER_MIN_K_EFF[i]) * diff / (1 - high)
 
         self.pygame_k_eff = temp_k_eff
 
@@ -155,8 +161,6 @@ class System:
         self.time_at_target_condition = 0.0
 
     def _init_graph(self):
-        self.pk.enable_n_history(self.N_HISTORY_WINDOW_S, self.frame_time)
-
         upper_time_bound = 0.5 * self.N_HISTORY_WINDOW_S
 
         fm.fontManager.addfont(FONT_PATH)
@@ -180,18 +184,22 @@ class System:
         ax.set_title("ATOMIC ARCADE: REACTOR POWER", color=GREEN, weight="bold",
                       fontproperties=self.custom_font, y=1.02)
 
-        t_lims = -self.N_HISTORY_WINDOW_S, upper_time_bound
-        t_range = t_lims[1] - t_lims[0]
-        ax.set_xlim(*t_lims)
-        self._t_lims = t_lims
+        # The live view starts at t=0 and grows/rolls forward from there (see
+        # _update_graph) - no fixed initial range to hold onto here.
+        ax.set_xlim(0, self.N_HISTORY_WINDOW_S)
 
         # Fixed range, set once - never rescaled per frame.
         ax.set_ylim(self.Y_AXIS_MIN_MW, self.Y_AXIS_MAX_MW)
         self._y_range = self.Y_AXIS_MAX_MW - self.Y_AXIS_MIN_MW
 
+        # Accumulated once per frame in _record_history_sample(); starts empty so the
+        # live plot has no pre-filled lead-in and genuinely begins at t=0.
+        self.full_history_times = []
+        self.full_history_powers = []
+
         self.pk_n_line = ax.plot(
-            self.pk.n_history_time_window,
-            self.pk.n_history_solutions,
+            self.full_history_times,
+            self.full_history_powers,
             color=GREEN,
         )[0]
 
@@ -206,7 +214,7 @@ class System:
                        self.FAILURE_ZONE_TOP_MW, self.FAILURE_ZONE_TOP_MW],
                 color="red", alpha=0.5)
 
-        text_x = t_lims[0] + 0.70 * t_range
+        text_x = 0.70 * self.N_HISTORY_WINDOW_S
         self.power_text = ax.text(text_x, self.Y_AXIS_MIN_MW + 0.95 * self._y_range,
                                    self._power_str(self.pk.n), color=GREEN, fontproperties=self.custom_font)
         self.keff_text = ax.text(text_x, self.Y_AXIS_MIN_MW + 0.90 * self._y_range,
@@ -218,8 +226,6 @@ class System:
 
         self.ax = ax
         self.graph_start_time = time.time()
-        self.full_history_times = []
-        self.full_history_powers = []
         self._load_leaderboard()
         self._update_graph()
 
@@ -268,16 +274,17 @@ class System:
         self.screen.blit(surf, GRAPH_ORIGIN_PX)
 
     def _update_graph(self):
-        self.pk_n_line.set_ydata(self.pk.n_history_solutions)
-        self.pk_n_line.set_xdata(self.pk.n_history_time_window)
+        self.pk_n_line.set_xdata(self.full_history_times)
+        self.pk_n_line.set_ydata(self.full_history_powers)
 
         elapsed = time.time() - self.graph_start_time
-        self.pk.n_history_time_window = np.linspace(elapsed - 6, elapsed - 1, 151)
-        self.ax.set_xlim(elapsed - 5, elapsed)
+        # Grows from 0 up to a full N_HISTORY_WINDOW_S-wide window, then rolls forward -
+        # never shows negative/pre-game time on the left edge.
+        window_start = max(0.0, elapsed - self.N_HISTORY_WINDOW_S)
+        window_end = max(elapsed, window_start + 1e-3)
+        self.ax.set_xlim(window_start, window_end)
 
-        t_lims = self._t_lims
-        t_range = t_lims[1] - t_lims[0]
-        text_x = t_lims[0] + 0.02 * t_range + elapsed
+        text_x = window_start + 0.02 * (window_end - window_start)
 
         # Y-axis is fixed (see _init_graph), so only the x position needs updating each frame.
         self.power_text.set_text(self._power_str(self.pk.n))
