@@ -27,6 +27,14 @@ TRANSPARENT_BLACK = (0, 0, 0, 0)
 GREEN = "#74e47c"
 FONT_PATH = "./fonts/retro.ttf"
 
+GRAPH_FIGSIZE_IN = (9, 8)
+GRAPH_DPI = 100
+GRAPH_ORIGIN_PX = (WIDTH * 0.3, HEIGHT * 0.2)
+GRAPH_SIZE_PX = (GRAPH_FIGSIZE_IN[0] * GRAPH_DPI, GRAPH_FIGSIZE_IN[1] * GRAPH_DPI)
+LEADERBOARD_ORIGIN_PX = (GRAPH_ORIGIN_PX[0] + GRAPH_SIZE_PX[0] + 20, GRAPH_ORIGIN_PX[1])
+LEADERBOARD_MAX_ENTRIES = 10
+RAW_SCORES_PATH = "raw_scores.txt"
+
 
 class System:
     """Drives the reactor point-kinetics model and the pygame control-panel UI."""
@@ -61,6 +69,8 @@ class System:
     # so it must be off wherever there's no real lever - otherwise it overwrites the
     # keyboard w/s increments back to neutral every frame.
     USE_LEVERS_BY_DEFAULT = True
+
+    MAX_NAME_LENGTH = 12
 
     def __init__(self, framerate=30, pk_n_animation=False, complexity_level=1) -> None:
         self.frame_rate = framerate
@@ -149,7 +159,7 @@ class System:
         self.custom_font = fm.FontProperties(fname=FONT_PATH)
         matplotlib.rcParams["font.family"] = self.custom_font.get_name()
 
-        self.fig = Figure(figsize=(9, 8), dpi=100, facecolor="black")
+        self.fig = Figure(figsize=GRAPH_FIGSIZE_IN, dpi=GRAPH_DPI, facecolor="black")
         self.canvas = agg.FigureCanvasAgg(self.fig)
         ax = self.fig.gca()
         ax.set_facecolor("black")
@@ -204,6 +214,9 @@ class System:
 
         self.ax = ax
         self.graph_start_time = time.time()
+        self.full_history_times = []
+        self.full_history_powers = []
+        self._load_leaderboard()
         self._update_graph()
 
     @staticmethod
@@ -239,6 +252,17 @@ class System:
 
     # -- Per-frame rendering ----------------------------------------------
 
+    def _record_history_sample(self):
+        elapsed = time.time() - self.graph_start_time
+        self.full_history_times.append(elapsed)
+        self.full_history_powers.append(self.pk.n)
+
+    def _blit_graph(self):
+        self.canvas.draw()
+        renderer = self.canvas.get_renderer()
+        surf = pygame.image.frombuffer(renderer.buffer_rgba(), self.canvas.get_width_height(), "RGBA")
+        self.screen.blit(surf, GRAPH_ORIGIN_PX)
+
     def _update_graph(self):
         self.pk_n_line.set_ydata(self.pk.n_history_solutions)
         self.pk_n_line.set_xdata(self.pk.n_history_time_window)
@@ -264,10 +288,61 @@ class System:
         self.elapsed_time_text.set_text(self._time_elapsed_str(elapsed))
         self.elapsed_time_text.set_x(text_x)
 
-        self.canvas.draw()
-        renderer = self.canvas.get_renderer()
-        surf = pygame.image.frombuffer(renderer.buffer_rgba(), self.canvas.get_width_height(), "RGBA")
-        self.screen.blit(surf, (WIDTH * 0.3, HEIGHT * 0.2))
+        self._blit_graph()
+
+    def _draw_final_graph(self):
+        """Freeze the graph on the full 0-n second power trace for the win screen."""
+        self.pk_n_line.set_xdata(self.full_history_times)
+        self.pk_n_line.set_ydata(self.full_history_powers)
+
+        total_time = self.full_history_times[-1]
+        self.ax.set_xlim(0, total_time)
+        self.ax.set_title("!!!YOU WIN!!!", color=GREEN, weight="bold",
+                           fontproperties=self.custom_font, y=1.02, fontsize=30)
+
+        text_x = total_time * 0.7
+        self.power_text.set_text(self._power_str(self.pk.n))
+        self.power_text.set_x(text_x)
+
+        self.keff_text.set_text(self._keff_str(self.k_eff))
+        self.keff_text.set_x(text_x)
+
+        self.target_time_text.set_text(self._time_at_target_str(self.time_at_target_condition))
+        self.target_time_text.set_x(text_x)
+
+        self.elapsed_time_text.set_text(self._time_elapsed_str(total_time))
+        self.elapsed_time_text.set_x(text_x)
+
+        self._blit_graph()
+
+    def _load_leaderboard(self):
+        entries = []
+        try:
+            with open(RAW_SCORES_PATH) as raw_scores:
+                for line in raw_scores:
+                    time_str, _, name = line.strip().partition(",")
+                    if not time_str:
+                        continue
+                    try:
+                        entries.append((float(time_str), name))
+                    except ValueError:
+                        continue
+        except FileNotFoundError:
+            pass
+
+        entries.sort(key=lambda entry: entry[0])
+        self.leaderboard_entries = entries[:LEADERBOARD_MAX_ENTRIES]
+
+    def _draw_leaderboard(self):
+        x, y = LEADERBOARD_ORIGIN_PX
+        header = self.fps_font.render("LEADERBOARD", True, GREEN)
+        self.screen.blit(header, (x, y))
+        y += header.get_height() + 10
+
+        for rank, (elapsed, name) in enumerate(self.leaderboard_entries, start=1):
+            row = self.fps_font.render(f"{rank}. {name} - {elapsed:.2f}s", True, WHITE)
+            self.screen.blit(row, (x, y))
+            y += row.get_height() + 4
 
     def _draw_popup(self, message):
         popup_surface = pygame.Surface((POPUP_WIDTH, POPUP_HEIGHT), pygame.SRCALPHA)
@@ -290,6 +365,33 @@ class System:
     def _draw_fps(self):
         fps_surface = self.fps_font.render(f"FPS: {self.clock.get_fps():.1f}", True, WHITE)
         self.screen.blit(fps_surface, (10, 10))
+
+    def _prompt_for_name(self):
+        """Modal text-entry loop shown after a win, drawn on top of the frozen final graph."""
+        name = ""
+        pygame.key.start_text_input()
+        entering = True
+        while entering:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    entering = False
+                elif event.type == pygame.TEXTINPUT:
+                    if len(name) < self.MAX_NAME_LENGTH:
+                        name += event.text
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RETURN:
+                        entering = False
+                    elif event.key == pygame.K_BACKSPACE:
+                        name = name[:-1]
+                    elif event.key == pygame.K_ESCAPE:
+                        name = ""
+                        entering = False
+
+            self._draw_popup(f"You win!\nEnter your name and press Enter:\n{name}_")
+            self.clock.tick(self.frame_rate)
+
+        pygame.key.stop_text_input()
+        return name.strip() or "Anonymous"
 
     def _update_leds(self, scramming, at_target):
         led_names = list(self.panel_states.LED_strips.keys())
@@ -342,12 +444,14 @@ class System:
             self.pk_thread.join()
         self.pk.reset_sol()
 
-    def _record_score(self):
+    def _record_score(self, name):
         # time_at_target_condition is always ~TARGET_HOLD_TIME_S (the win threshold), so it
         # doesn't distinguish scores - log total time elapsed since the game started instead.
         total_elapsed = time.time() - self.graph_start_time
-        with open("raw_scores.txt", "a") as raw_scores:
-            raw_scores.write("{:.3f},{}\n".format(total_elapsed, "Placeholdername"))
+        with open(RAW_SCORES_PATH, "a") as raw_scores:
+            raw_scores.write("{:.3f},{}\n".format(total_elapsed, name))
+        if self.pk_n_animation:
+            self._load_leaderboard()
 
     # -- Main loop ----------------------------------------------------------
 
@@ -467,12 +571,11 @@ class System:
                     print("Press 'q' or 'escape' to quit.")
                     
                     self._end_game()
-                    self._record_score()
                     victory_flag = True
                     if self.pk_n_animation:
-                        self.ax.set_title("!!!YOU WIN!!!", color=GREEN, weight="bold",
-                                           fontproperties=self.custom_font, y=1.02, fontsize=30)
-                        self._update_graph()
+                        self._draw_final_graph()
+                    name = self._prompt_for_name()
+                    self._record_score(name)
 
                 ##!! Update the k_eff value based on lever_rel_pos
                 if not self.scramming and use_levers_flag:
@@ -484,6 +587,7 @@ class System:
                 self.screen.fill((50, 0, 0))
 
             if self.pk_n_animation and self.running:
+                self._record_history_sample()
                 self._update_graph()
 
             if show_quit_popup:
@@ -500,6 +604,8 @@ class System:
                 self.scramming = False
 
             self._draw_fps()
+            if self.pk_n_animation:
+                self._draw_leaderboard()
 
             # Wait for the next frame
             self.clock.tick(self.frame_rate)
