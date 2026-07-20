@@ -1,6 +1,6 @@
 """Windows/desktop entry point for Reactor Simulator 9000.
 
-game.py talks to the physical Raspberry Pi control panel (GPIO-driven levers,
+game_new.py talks to the physical Raspberry Pi control panel (GPIO-driven levers,
 switches and LEDs) via MyControlPanelStates, which ties the game to a Pi. The
 game already supports full keyboard control independently of that panel
 ('1' to start, 'w'/'s' to raise/lower the control rods, 'space' to SCRAM, 'q'
@@ -8,7 +8,7 @@ to quit), so on a desktop we just swap the panel for a stub that satisfies
 the same interface without touching any hardware.
 """
 
-from game import System
+from game_new import System
 
 
 class KeyboardControlPanelStates:
