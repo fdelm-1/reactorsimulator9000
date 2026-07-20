@@ -393,7 +393,7 @@ class System:
                         name = ""
                         entering = False
 
-            self._draw_popup(f"You win!\nPress 1D/4 to restart or 3D/B to quit\nEnter your name and press Enter:\n{name}_")
+            self._draw_popup(f"You win!\nEnter your name and press Enter:\n{name}_")
             self.clock.tick(self.frame_rate)
 
         pygame.key.stop_text_input()
