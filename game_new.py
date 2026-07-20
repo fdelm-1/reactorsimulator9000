@@ -39,6 +39,7 @@ class System:
     TARGET_POWER_UPPER_MW = TARGET_POWER_MW + TARGET_POWER_TOLERANCE_MW
     TARGET_HOLD_TIME_S = 5.0
     FAILURE_POWER_MW = 250
+    FAILURE_ZONE_TOP_MW = 500  # how far up the graph's red danger band is drawn
 
     MIN_ALLOWABLE_K_EFF = 0.975
     MAX_ALLOWABLE_BETA_FRACTION = 0.95
@@ -179,8 +180,7 @@ class System:
                        self.TARGET_POWER_UPPER_MW, self.TARGET_POWER_UPPER_MW],
                 color=GREEN, alpha=0.5)
         ax.fill(span, [self.FAILURE_POWER_MW, self.FAILURE_POWER_MW,
-                       self.FAILURE_POWER_MW * self._dynamic_bound_factor,
-                       self.FAILURE_POWER_MW * self._dynamic_bound_factor],
+                       self.FAILURE_ZONE_TOP_MW, self.FAILURE_ZONE_TOP_MW],
                 color="red", alpha=0.5)
 
         bf = self._dynamic_bound_factor
@@ -339,9 +339,9 @@ class System:
             self.pk_thread.join()
         self.pk.reset_sol()
 
-        elapsed = time.time() - getattr(self, "graph_start_time", time.time())
+    def _record_score(self):
         with open("raw_scores.txt", "a") as raw_scores:
-            raw_scores.write("{:.3f},{}\n".format(elapsed, "Placeholdername"))
+            raw_scores.write("{:.3f},{}\n".format(self.time_at_target_condition, "Placeholdername"))
 
     # -- Main loop ----------------------------------------------------------
 
@@ -461,6 +461,7 @@ class System:
                     print("Press 'q' or 'escape' to quit.")
                     
                     self._end_game()
+                    self._record_score()
                     victory_flag = True
                     if self.pk_n_animation:
                         self.ax.set_title("!!!YOU WIN!!!", color=GREEN, weight="bold",
