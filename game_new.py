@@ -31,6 +31,7 @@ GRAPH_DPI = 100
 GRAPH_ORIGIN_PX = (WIDTH * 0.3, HEIGHT * 0.2)
 GRAPH_SIZE_PX = (GRAPH_FIGSIZE_IN[0] * GRAPH_DPI, GRAPH_FIGSIZE_IN[1] * GRAPH_DPI)
 LEADERBOARD_ORIGIN_PX = (GRAPH_ORIGIN_PX[0] + GRAPH_SIZE_PX[0] + 20, GRAPH_ORIGIN_PX[1])
+LEADERBOARD_SIZE_PX = (WIDTH - LEADERBOARD_ORIGIN_PX[0], GRAPH_SIZE_PX[1])
 LEADERBOARD_MAX_ENTRIES = 10
 RAW_SCORES_PATH = "raw_scores.txt"
 
@@ -338,6 +339,12 @@ class System:
 
     def _draw_leaderboard(self):
         x, y = LEADERBOARD_ORIGIN_PX
+        # Clear this column first: once self.running is False (idle screen, post-win
+        # screen) nothing else repaints the background here, so without this a new
+        # score/entry would just be drawn over the top of the previous render instead
+        # of replacing it.
+        self.screen.fill(BLACK, (x, y, *LEADERBOARD_SIZE_PX))
+
         header = self.fps_font.render("LEADERBOARD", True, GREEN)
         self.screen.blit(header, (x, y))
         y += header.get_height() + 10
@@ -551,7 +558,12 @@ class System:
             if self.running:
                 if self.TARGET_POWER_LOWER_MW < self.pk.n < self.TARGET_POWER_UPPER_MW:
                     at_target = True
-                    self.time_at_target_condition += self.frame_time
+                    # clock.get_time() is the actual duration of the previous frame, in ms.
+                    # Using the fixed nominal frame_time here instead would undercount
+                    # whenever the real frame rate drops below target (e.g. on the Pi),
+                    # since each frame would still only add 1/frame_rate regardless of how
+                    # long it actually took.
+                    self.time_at_target_condition += self.clock.get_time() / 1000.0
                 else:
                     at_target = False
 
@@ -570,6 +582,9 @@ class System:
                         self._draw_final_graph()
                     name = self._prompt_for_name()
                     self._record_score(name)
+                    # Replace the (now stale) name-entry popup with the existing
+                    # quit/restart instructions rather than leaving it on screen.
+                    self._draw_popup(quit_restart_message)
 
                 ##!! Update the k_eff value based on lever_rel_pos
                 if not self.scramming and use_levers_flag:
