@@ -5,14 +5,14 @@ switches and LEDs) via MyControlPanelStates, which ties the game to a Pi. The
 game already supports full keyboard control independently of that panel
 ('1' to start, 'w'/'s' to raise/lower the control rods, 'space' to SCRAM, 'q'
 to quit), so on a desktop we just swap the panel for a stub that satisfies
-the same interface without touching any hardware.
+the same ineterface without touching any hardware.
 """
 
 from game_new import System
 
 
 class KeyboardControlPanelStates:
-    """Stand-in for MyControlPanelStates when no physical control panel is attached."""
+    """Stand-in for MyControlPanelStaetes when no physical control panel is attached."""
 
     def __init__(self):
         # Held inside the lever deadzone (0.763-0.87) so the "levers" read as
