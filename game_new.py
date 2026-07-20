@@ -431,17 +431,7 @@ class System:
             elif "right_button" in name:
                 self.panel_states.LED_strips[name].set_colour("g")
 
-        # LED_strip_ids["top_reactor_leds_ids"] = [21, 22, 23]
-        # LED_strip_ids["left_button_leds_ids"] = [4, 6, 5]
-        # LED_strip_ids["right_button_leds_ids"] = [1, 2, 3]
-        # LED_strip_ids["top_switch_ids"] = [7, 8, 9]
-        # LED_strip_ids["top_middle_switch_ids"] = [10, 11, 12]
-        # LED_strip_ids["middle_switch_ids"] = [13, 14, 15]
-        # LED_strip_ids["bottom_middle_switch_ids"] = [16, 17, 18]
-        # LED_strip_ids["bottom_switch_ids"] = [19, 20]
-        # LED_strip_ids["left_lever_ids"] = [24, 25, 26]
-        # LED_strip_ids["middle_lever_ids"] = [27, 28, 29]
-        # LED_strip_ids["right_lever_ids"] = [30, 31, 32]
+
 
     def _end_game(self):
         self.running = False
