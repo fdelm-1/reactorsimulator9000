@@ -117,7 +117,7 @@ class System:
         self.scram_rate = 10 * self.inc
         self.lifting_rod = False
         self.lowering_rod = False
-        self.scraming = False
+        self.scramming = False
 
         self.max_allowable_k_eff = 1 + (self.pk.beta * self.MAX_ALLOWABLE_BETA_FRACTION)
 
@@ -275,7 +275,7 @@ class System:
         self.screen.blit(popup_surface, (WIDTH // 2 - max_width // 2, HEIGHT // 2 - total_height // 2))
         pygame.display.flip()
 
-    def _update_leds(self, scraming, at_target):
+    def _update_leds(self, scramming, at_target):
         led_names = list(self.panel_states.LED_strips.keys())
 
         if not self.running:
@@ -297,7 +297,7 @@ class System:
                 self.panel_states.LED_strips[name].set_colour("g")
 
             elif "reactor" in name:
-                if scraming:
+                if scramming:
                     self.panel_states.LED_strips[name].set_color("r")
                 elif at_target:
                     self.panel_states.LED_strips[name].set_color("g")
@@ -355,7 +355,7 @@ class System:
 
             ##!! Figure out what the physical inputs from the control panel are
             self.panel_states.update_state()
-            self._update_leds(self.scraming, at_target)
+            self._update_leds(self.scramming, at_target)
             lever_rel_pos = list(self.panel_states.control_rod_lever_rel_pos.values())
 
             ##!! To start the game: check if the left button is pressed and all switches are on
@@ -390,7 +390,7 @@ class System:
 
                     if event.key in (pygame.K_SPACE, pygame.K_0):
                         if self.running:
-                            self.scraming = True
+                            self.scramming = True
 
                     if event.key in (pygame.K_w, pygame.K_UP, pygame.K_2):
                         self.lifting_rod = True
@@ -435,7 +435,7 @@ class System:
                     at_target = False
 
                 if self.pk.n > self.FAILURE_POWER_MW:
-                    self.scraming = True
+                    self.scramming = True
 
                 elif self.time_at_target_condition >= self.TARGET_HOLD_TIME_S:
                     print("Congratulations! You have successfully and safely kept the reactor "
@@ -450,12 +450,12 @@ class System:
                         self._update_graph()
 
                 ##!! Update the k_eff value based on lever_rel_pos
-                if not self.scraming and use_levers_flag:
+                if not self.scramming and use_levers_flag:
                     self.update_pygame_keff_from_levers(lever_rel_pos, lever_origin_rel_pos)
 
             if self.running:
                 self.screen.fill((0, 50, 0))
-            if self.scraming:
+            if self.scramming:
                 self.screen.fill((50, 0, 0))
 
             if self.pk_n_animation and self.running:
@@ -464,15 +464,15 @@ class System:
             if show_quit_popup:
                 self._draw_popup(quit_restart_message)
 
-            self.pygame_k_eff -= self.scram_rate if self.scraming else 0
+            self.pygame_k_eff -= self.scram_rate if self.scramming else 0
             self.pygame_k_eff += self.inc if self.lifting_rod else 0
             self.pygame_k_eff -= self.inc if self.lowering_rod else 0
             self.pygame_k_eff = min(max(self.MIN_ALLOWABLE_K_EFF, self.pygame_k_eff), self.max_allowable_k_eff)
 
             self.k_eff = self.pygame_k_eff
 
-            if self.scraming and self.pygame_k_eff == self.MIN_ALLOWABLE_K_EFF:
-                self.scraming = False
+            if self.scramming and self.pygame_k_eff == self.MIN_ALLOWABLE_K_EFF:
+                self.scramming = False
 
             # Wait for the next frame
             self.clock.tick(self.frame_rate)
