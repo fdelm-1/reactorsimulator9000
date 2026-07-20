@@ -31,6 +31,12 @@ class KeyboardControlPanelStates:
 
 
 class WindowsSystem(System):
+    # No physical lever to read, so drive k_eff from the w/s keyboard increments
+    # instead of update_pygame_keff_from_levers() (which would just read the stub's
+    # fixed neutral position and reset k_eff to 1.0 every frame). Still togglable
+    # in-game with '8' if you want to see the (static) lever behavior.
+    USE_LEVERS_BY_DEFAULT = False
+
     def _create_panel_states(self):
         return KeyboardControlPanelStates()
 
