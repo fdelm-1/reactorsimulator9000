@@ -23,7 +23,6 @@ WIDTH, HEIGHT = 1920, 1080
 POPUP_WIDTH, POPUP_HEIGHT = 800, 600
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
-TRANSPARENT_BLACK = (0, 0, 0, 0)
 GREEN = "#74e47c"
 FONT_PATH = "./fonts/retro.ttf"
 
@@ -133,8 +132,12 @@ class System:
 
     def _init_display(self):
         pygame.init()
-        self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
-        pygame.display.set_caption("Reactor Simulator 9000")
+        # Reuse the existing window across restarts (a new System is created each
+        # restart) instead of tearing it down and recreating it via set_mode() again.
+        self.screen = pygame.display.get_surface()
+        if self.screen is None:
+            self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
+            pygame.display.set_caption("Reactor Simulator 9000")
         self.clock = pygame.time.Clock()
         self.fps_font = pygame.font.Font(FONT_PATH, 20)
 
@@ -345,21 +348,24 @@ class System:
             y += row.get_height() + 4
 
     def _draw_popup(self, message):
+        # popup_surface is a fixed POPUP_WIDTH x POPUP_HEIGHT box, fully repainted and
+        # blitted at the same fixed screen position every call, so a shorter message
+        # (e.g. after backspacing) always overwrites the previous, longer one instead
+        # of leaving stray glyphs from earlier frames on screen.
         popup_surface = pygame.Surface((POPUP_WIDTH, POPUP_HEIGHT), pygame.SRCALPHA)
-        popup_surface.fill(TRANSPARENT_BLACK)
-        self.screen.blit(popup_surface, (0, 0))
+        popup_surface.fill((0, 0, 0, 230))
 
         font = pygame.font.Font(FONT_PATH, 24)
         rendered_lines = [font.render(line, True, WHITE) for line in message.split("\n")]
-        max_width = max(line.get_width() for line in rendered_lines)
         total_height = sum(line.get_height() for line in rendered_lines)
 
-        y = 0
+        y = (POPUP_HEIGHT - total_height) // 2
         for rendered_line in rendered_lines:
-            popup_surface.blit(rendered_line, (0, y))
+            x = (POPUP_WIDTH - rendered_line.get_width()) // 2
+            popup_surface.blit(rendered_line, (x, y))
             y += rendered_line.get_height()
 
-        self.screen.blit(popup_surface, (WIDTH // 2 - max_width // 2, HEIGHT // 2 - total_height // 2))
+        self.screen.blit(popup_surface, (WIDTH // 2 - POPUP_WIDTH // 2, HEIGHT // 2 - POPUP_HEIGHT // 2))
         pygame.display.flip()
 
     def _draw_fps(self):
