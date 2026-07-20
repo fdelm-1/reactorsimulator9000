@@ -473,7 +473,7 @@ class System:
         use_levers_flag = self.USE_LEVERS_BY_DEFAULT
         show_quit_popup = False
         restart_flag = False
-        quit_restart_message = "Press '3D' to quit\nor '1D' to restart.\nAny other key to continue"
+        quit_restart_message = "Press 3D/B to quit\nor 1D/4 to restart.\nAny other key to continue"
 
         victory_flag = False
         at_target = False
