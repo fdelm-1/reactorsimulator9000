@@ -219,8 +219,8 @@ class System:
         print(
             "Welcome to Reactor Simulator 9000:\n\n"
             "Your mission, should you choose to accept it, is to keep the reactor stable "
-            "for 20 seconds at a power of 200 MW.\n"
-            "You are allowed 2 MW above or below this target.\n"
+            "for 5 seconds at a power of 200 MW.\n"
+            "You are allowed 8 MW above or below this target.\n"
             "The reactor will melt-down if it is taken above 250 MW!\n\n"
             "You can control the reactor by pressing 'w' or 'up' to raise the control rods, "
             "and 's' or 'down' to lower them.\n"
