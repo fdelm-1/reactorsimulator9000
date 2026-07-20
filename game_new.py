@@ -12,7 +12,6 @@ from matplotlib.figure import Figure
 from matplotlib.ticker import FormatStrFormatter
 
 from point_kinetics import PointKinetics
-from control_panel_states import MyControlPanelStates
 
 environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"
 import pygame  # noqa: E402  (must import after PYGAME_HIDE_SUPPORT_PROMPT is set)
@@ -60,8 +59,19 @@ class System:
 
         self.running = False
 
-        self.panel_states = MyControlPanelStates()
+        self.panel_states = self._create_panel_states()
         self.lever_deadzone_states = [0, 0, 0]
+
+    def _create_panel_states(self):
+        """Hook so platforms without the physical control panel can substitute a stand-in.
+
+        Imported lazily because control_panel_states.py pulls in RPi.GPIO/gpiozero/smbus,
+        which only exist on a Raspberry Pi - importing it at module level would make merely
+        importing this file fail on any other platform.
+        """
+        from control_panel_states import MyControlPanelStates
+
+        return MyControlPanelStates()
 
     def main(self):
         self.pk_thread = threading.Thread(target=self.run_pk, args=(1,))
