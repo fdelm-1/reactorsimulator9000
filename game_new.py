@@ -441,8 +441,6 @@ class System:
         self.pk.reset_sol()
 
     def _record_score(self, name):
-        # time_at_target_condition is always ~TARGET_HOLD_TIME_S (the win threshold), so it
-        # doesn't distinguish scores - log total time elapsed since the game started instead.
         total_elapsed = time.time() - self.graph_start_time
         with open(RAW_SCORES_PATH, "a") as raw_scores:
             raw_scores.write("{:.3f},{}\n".format(total_elapsed, name))
