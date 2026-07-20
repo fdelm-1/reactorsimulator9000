@@ -375,8 +375,8 @@ class System:
             self._update_leds(self.scramming, at_target)
             lever_rel_pos = list(self.panel_states.control_rod_lever_rel_pos.values())
 
-            ##!! To start the game: check if the left button is pressed and all switches are on
-            if self.panel_states.button_states["left_button"]:
+            ##!! To start the game: check if both buttons are pressed and all switches are on
+            if self.panel_states.button_states["left_button"] and self.panel_states.button_states["right_button"]:
                 if all(self.panel_states.switch_states.values()):
                     self.screen.fill(BLACK)
                     if not self.running:

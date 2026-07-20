@@ -19,7 +19,7 @@ class KeyboardControlPanelStates:
         # neutral and only the keyboard rod controls affect k_eff. Key names
         # match MyControlPanelStates.control_rod_lever_rel_pos.
         self.control_rod_lever_rel_pos = {"left_lever": 0.8, "mid_lever": 0.8, "right_lever": 0.8}
-        self.button_states = {"left_button": False}
+        self.button_states = {"left_button": False, "right_button": False}
         self.switch_states = {"switch": False}
         self.LED_strips = {}
 
