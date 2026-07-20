@@ -60,8 +60,12 @@ class System:
 
         self.running = False
 
-        self.panel_states = MyControlPanelStates()
+        self.panel_states = self._create_panel_states()
         self.lever_deadzone_states = [0, 0, 0]
+
+    def _create_panel_states(self):
+        """Hook so platforms without the physical control panel can substitute a stand-in."""
+        return MyControlPanelStates()
 
     def main(self):
         self.pk_thread = threading.Thread(target=self.run_pk, args=(1,))
