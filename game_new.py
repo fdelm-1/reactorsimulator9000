@@ -579,7 +579,6 @@ class System:
                         use_levers_flag = not use_levers_flag
 
                     if event.key == pygame.K_4:
-                        show_quit_popup:
                         ##!! RESTART
                         restart_flag = True
                         self.running = False
