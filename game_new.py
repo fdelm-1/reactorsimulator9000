@@ -129,9 +129,11 @@ class System:
         return self.run_pygame()
 
     def start_simulation(self):
+        self._log_function_call("start_simulation")
         self.pk_thread.start()
 
     def update_pygame_keff_from_levers(self, lever_current_rel_pos, lever_origin_rel_pos=(0.75, 0.75, 0.75)):
+        self._log_function_call("update_pygame_keff_from_levers")
         """Each lever contributes linearly across its full travel (LEVER_MIN_K_EFF all
         the way down to LEVER_MAX_K_EFF all the way up), with no flat/dead band - the
         physical lever is a plain slider potentiometer, so its software response
@@ -364,7 +366,7 @@ class System:
         ]
 
     def _update_graph(self):
-        _log_function_call("_update_graph")
+        self._log_function_call("_update_graph")
         self.pk_n_line.set_xdata(self.full_history_times)
         self.pk_n_line.set_ydata(self.full_history_powers)
 
@@ -487,6 +489,7 @@ class System:
         return name.strip() or "Anonymous"
 
     def _update_leds(self, scramming, at_target):
+        self._log_function_call("_update_leds")
         led_names = list(self.panel_states.LED_strips.keys())
 
         if not self.running:
@@ -537,6 +540,7 @@ class System:
             self._load_leaderboard()
 
     def _log_function_call(self, function_name):
+        
         with open(LOG_PATH, "a", newline="") as log_file:
             log_writer = csv.writer(log_file)
             log_writer.writerow([function_name, time.time()])
