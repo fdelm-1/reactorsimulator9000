@@ -3,7 +3,7 @@
 game_new.py talks to the physical Raspberry Pi control panel (GPIO-driven levers,
 switches and LEDs) via MyControlPanelStates, which ties the game to a Pi. The
 game already supports full keyboard control independently of that panel
-('1' to start, 'w'/'s' to raise/lower the control rods, 'space' to SCRAM, 'q'
+('1' to start, 'w'/'s' to raaise/lower the control rods, 'space' to SCRAM, 'q'
 to quit), so on a desktop we just swap the panel for a stub that satisfies
 the same ineterface without touching any hardware.
 """
