@@ -181,7 +181,7 @@ class System:
         ax.set_xlabel("Time (s)", color=GREEN, weight="bold", fontproperties=self.custom_font, labelpad=15)
         ax.set_ylabel("Power (MW)", color=GREEN, weight="bold", fontproperties=self.custom_font, labelpad=15)
         ax.yaxis.set_major_formatter(FormatStrFormatter("%.1f"))
-        ax.set_title("ATOMIC ARCADE: REACTOR POWER", color=GREEN, weight="bold",
+        ax.set_title("REACTOR SIMULATOR 9000", color=GREEN, weight="bold",
                       fontproperties=self.custom_font, y=1.02)
 
         # The live view starts at t=0 and grows/rolls forward from there (see
