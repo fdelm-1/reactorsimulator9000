@@ -47,6 +47,7 @@ class System:
     TARGET_HOLD_TIME_S = 5.0
     FAILURE_POWER_MW = 250
     FAILURE_ZONE_TOP_MW = 500  # how far up the graph's red danger band is drawn
+    MIN_DISPLAY_POWER_MW = 1  # displayed/plotted power never reads below this
 
     # Fixed graph y-axis range in MW. Kept constant (no per-frame autoscaling from the
     # data's min/max) so the view never "zooms" and set_ylim() is only called once -
@@ -216,7 +217,7 @@ class System:
 
         text_x = 0.70 * self.N_HISTORY_WINDOW_S
         self.power_text = ax.text(text_x, self.Y_AXIS_MIN_MW + 0.95 * self._y_range,
-                                   self._power_str(self.pk.n), color=GREEN, fontproperties=self.custom_font)
+                                   self._power_str(self._display_power()), color=GREEN, fontproperties=self.custom_font)
         self.keff_text = ax.text(text_x, self.Y_AXIS_MIN_MW + 0.90 * self._y_range,
                                   self._keff_str(self.k_eff), color=GREEN, fontproperties=self.custom_font)
         self.target_time_text = ax.text(text_x, self.Y_AXIS_MIN_MW + 0.82 * self._y_range,
@@ -232,6 +233,10 @@ class System:
     @staticmethod
     def _power_str(power):
         return f"Power = {power:.3f} MW"
+
+    def _display_power(self):
+        """Reactor power for the graph/HUD only - never the raw game-logic value."""
+        return max(self.pk.n, self.MIN_DISPLAY_POWER_MW)
 
     def _keff_str(self, k_eff):
         value = "MAXIMUM!" if k_eff == self.max_allowable_k_eff else f"{k_eff:.5f}"
@@ -265,7 +270,7 @@ class System:
     def _record_history_sample(self):
         elapsed = time.time() - self.graph_start_time
         self.full_history_times.append(elapsed)
-        self.full_history_powers.append(self.pk.n)
+        self.full_history_powers.append(self._display_power())
 
     def _blit_graph(self):
         self.canvas.draw()
@@ -278,16 +283,18 @@ class System:
         self.pk_n_line.set_ydata(self.full_history_powers)
 
         elapsed = time.time() - self.graph_start_time
-        # Grows from 0 up to a full N_HISTORY_WINDOW_S-wide window, then rolls forward -
-        # never shows negative/pre-game time on the left edge.
-        window_start = max(0.0, elapsed - self.N_HISTORY_WINDOW_S)
-        window_end = max(elapsed, window_start + 1e-3)
+        # Shows a fixed 0-N_HISTORY_WINDOW_S view from the very start, then rolls
+        # forward once elapsed passes that - never shows negative/pre-game time.
+        if elapsed <= self.N_HISTORY_WINDOW_S:
+            window_start, window_end = 0.0, self.N_HISTORY_WINDOW_S
+        else:
+            window_start, window_end = elapsed - self.N_HISTORY_WINDOW_S, elapsed
         self.ax.set_xlim(window_start, window_end)
 
         text_x = window_start + 0.02 * (window_end - window_start)
 
         # Y-axis is fixed (see _init_graph), so only the x position needs updating each frame.
-        self.power_text.set_text(self._power_str(self.pk.n))
+        self.power_text.set_text(self._power_str(self._display_power()))
         self.power_text.set_x(text_x)
 
         self.keff_text.set_text(self._keff_str(self.k_eff))
@@ -312,7 +319,7 @@ class System:
                            fontproperties=self.custom_font, y=1.02, fontsize=30)
 
         text_x = total_time * 0.7
-        self.power_text.set_text(self._power_str(self.pk.n))
+        self.power_text.set_text(self._power_str(self._display_power()))
         self.power_text.set_x(text_x)
 
         self.keff_text.set_text(self._keff_str(self.k_eff))
