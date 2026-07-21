@@ -3,6 +3,7 @@
 import time
 import threading
 from os import environ
+import csv
 
 import matplotlib
 import matplotlib.backends.backend_agg as agg
@@ -31,7 +32,8 @@ GRAPH_SIZE_PX = (GRAPH_FIGSIZE_IN[0] * GRAPH_DPI, GRAPH_FIGSIZE_IN[1] * GRAPH_DP
 LEADERBOARD_ORIGIN_PX = (GRAPH_ORIGIN_PX[0] + GRAPH_SIZE_PX[0] + 20, GRAPH_ORIGIN_PX[1])
 LEADERBOARD_SIZE_PX = (WIDTH - LEADERBOARD_ORIGIN_PX[0], GRAPH_SIZE_PX[1])
 LEADERBOARD_MAX_ENTRIES = 10
-RAW_SCORES_PATH = "raw_scores.txt"
+RAW_SCORES_PATH = "raw_scores.csv"
+TIME_CHECK_PATH = "lever_time_check.csv"
 
 # Popups (name entry, quit/restart instructions) live in the strip above the graph
 # (which starts at GRAPH_ORIGIN_PX[1]) instead of screen-centre, so they never
@@ -350,7 +352,7 @@ class System:
 
     def _load_leaderboard(self):
         entries = []
-        try:
+        '''try:
             with open(RAW_SCORES_PATH) as raw_scores:
                 for line in raw_scores:
                     time_str, _, name = line.strip().partition(",")
@@ -361,7 +363,18 @@ class System:
                     except ValueError:
                         continue
         except FileNotFoundError:
-            pass
+            pass'''
+        #
+
+        with open(RAW_SCORES_PATH, "r") as raw_scores:
+            reader = csv.reader(raw_scores)
+            for row in reader:
+                try:
+                    elapsed_time = float(row[0])
+                    name = row[1]
+                    entries.append((elapsed_time, name))
+                except ValueError:
+                    continue
 
         entries.sort(key=lambda entry: entry[0])
         self.leaderboard_entries = entries[:LEADERBOARD_MAX_ENTRIES]
@@ -479,7 +492,9 @@ class System:
     def _record_score(self, name):
         total_elapsed = time.time() - self.graph_start_time
         with open(RAW_SCORES_PATH, "a") as raw_scores:
-            raw_scores.write("{:.3f},{}\n".format(total_elapsed, name))
+            score_writer = csv.writer(raw_scores)
+            score_writer.writerow([f"{total_elapsed:.3f}", name])
+        #  
         if self.pk_n_animation:
             self._load_leaderboard()
 
