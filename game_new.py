@@ -382,6 +382,11 @@ class System:
         self.leaderboard_entries = entries[:LEADERBOARD_MAX_ENTRIES]
         self._rebuild_leaderboard_surface()
 
+    def _clear_leaderboard(self):
+        open(RAW_SCORES_PATH, "w").close()
+        if self.pk_n_animation:
+            self._load_leaderboard()
+
     def _rebuild_leaderboard_surface(self):
         # Rendered once here (whenever the leaderboard changes) rather than every
         # frame in _draw_leaderboard(), which just blits this cached surface.
@@ -582,6 +587,10 @@ class System:
                         restart_flag = True
                         self.running = False
                         pygame_running = False
+
+                    if event.key == pygame.K_d:
+                        ##!! Clear the leaderboard
+                        self._clear_leaderboard()
 
                 elif event.type == pygame.KEYUP:
                     if event.key == pygame.K_1 and not self.running:
