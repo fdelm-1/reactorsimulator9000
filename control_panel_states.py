@@ -258,8 +258,6 @@ class MyControlPanelStates:
         LED_strip_ids["middle_lever_ids"] = [27,28,29]
         LED_strip_ids["right_lever_ids"] = [30,31, 32]
         self.all_led_ids = [x for xs in list(chain(LED_strip_ids.values())) for x in xs]
-        print("All LED IDs:")
-        print(self.all_led_ids)
         ## Big dict of all LEDs by channel number
         self.LEDs_by_id = {}
         for led_id in self.all_led_ids:
