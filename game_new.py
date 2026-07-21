@@ -19,7 +19,6 @@ import pygame  # noqa: E402  (must import after PYGAME_HIDE_SUPPORT_PROMPT is se
 
 
 WIDTH, HEIGHT = 1920, 1080
-POPUP_WIDTH, POPUP_HEIGHT = 800, 600
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 GREEN = "#74e47c"
@@ -34,11 +33,23 @@ LEADERBOARD_SIZE_PX = (WIDTH - LEADERBOARD_ORIGIN_PX[0], GRAPH_SIZE_PX[1])
 LEADERBOARD_MAX_ENTRIES = 10
 RAW_SCORES_PATH = "raw_scores.txt"
 
+# Popups (name entry, quit/restart instructions) live in the strip above the graph
+# (which starts at GRAPH_ORIGIN_PX[1]) instead of screen-centre, so they never
+# block the game view.
+POPUP_WIDTH, POPUP_HEIGHT = 800, 170
+POPUP_TOP_MARGIN = 20
+
 
 class System:
     """Drives the reactor point-kinetics model and the pygame control-panel UI."""
 
     N_HISTORY_WINDOW_S = 5  # seconds of power history shown on the graph
+
+    # How far across the visible window the live line's leading (current-time) point
+    # sits, once there's enough history to place it there - e.g. 0.8 means it settles
+    # at 80% of the way along (4s into a 5s-wide window) rather than running to the
+    # very right edge, leaving a lookahead gap instead of the line hitting the wall.
+    LIVE_POINT_FRACTION = 0.8
 
     TARGET_POWER_MW = 200
     TARGET_POWER_TOLERANCE_MW = 8
@@ -283,12 +294,13 @@ class System:
         self.pk_n_line.set_ydata(self.full_history_powers)
 
         elapsed = time.time() - self.graph_start_time
-        # Shows a fixed 0-N_HISTORY_WINDOW_S view from the very start, then rolls
-        # forward once elapsed passes that - never shows negative/pre-game time.
-        if elapsed <= self.N_HISTORY_WINDOW_S:
-            window_start, window_end = 0.0, self.N_HISTORY_WINDOW_S
-        else:
-            window_start, window_end = elapsed - self.N_HISTORY_WINDOW_S, elapsed
+        # Window is always N_HISTORY_WINDOW_S wide. Starts pinned at 0 (never shows
+        # negative/pre-game time), so the live point crawls from the left edge; once
+        # elapsed passes LIVE_POINT_FRACTION * N_HISTORY_WINDOW_S the window starts
+        # rolling forward to hold the live point at that fraction across, rather than
+        # letting it reach the right edge.
+        window_start = max(0.0, elapsed - self.LIVE_POINT_FRACTION * self.N_HISTORY_WINDOW_S)
+        window_end = window_start + self.N_HISTORY_WINDOW_S
         self.ax.set_xlim(window_start, window_end)
 
         text_x = window_start + 0.02 * (window_end - window_start)
@@ -386,7 +398,7 @@ class System:
             popup_surface.blit(rendered_line, (x, y))
             y += rendered_line.get_height()
 
-        self.screen.blit(popup_surface, (WIDTH // 2 - POPUP_WIDTH // 2, HEIGHT // 2 - POPUP_HEIGHT // 2))
+        self.screen.blit(popup_surface, (WIDTH // 2 - POPUP_WIDTH // 2, POPUP_TOP_MARGIN))
         pygame.display.flip()
 
     def _draw_fps(self):
