@@ -39,7 +39,6 @@ LEADERBOARD_ORIGIN_PX = (GRAPH_ORIGIN_PX[0] + GRAPH_SIZE_PX[0] + 20, GRAPH_ORIGI
 LEADERBOARD_SIZE_PX = (WIDTH - LEADERBOARD_ORIGIN_PX[0], GRAPH_SIZE_PX[1])
 LEADERBOARD_MAX_ENTRIES = 10
 RAW_SCORES_PATH = "raw_scores.csv"
-LOG_PATH = "function_calls_log.csv"
 
 # Popups (name entry, quit/restart instructions) live in the strip above the graph
 # (which starts at GRAPH_ORIGIN_PX[1]) instead of screen-centre, so they never
@@ -125,15 +124,13 @@ class System:
         return MyControlPanelStates()
 
     def main(self):
-        self.pk_thread = threading.Thread(target=self.run_pk, args=(1,))
+        self.pk_thread = threading.Thread(target=self.run_pk)
         return self.run_pygame()
 
     def start_simulation(self):
-        self._log_function_call("start_simulation")
         self.pk_thread.start()
 
     def update_pygame_keff_from_levers(self, lever_current_rel_pos, lever_origin_rel_pos=(0.75, 0.75, 0.75)):
-        self._log_function_call("update_pygame_keff_from_levers")
         """Each lever contributes linearly across its full travel (LEVER_MIN_K_EFF all
         the way down to LEVER_MAX_K_EFF all the way up), with no flat/dead band - the
         physical lever is a plain slider potentiometer, so its software response
@@ -288,20 +285,6 @@ class System:
     def _time_elapsed_str(seconds_elapsed):
         return f"Time played = {seconds_elapsed:.2f} s"
 
-    @staticmethod
-    def _print_welcome_message():
-        print(
-            "Welcome to Reactor Simulator 9000:\n\n"
-            "Your mission, should you choose to accept it, is to keep the reactor stable "
-            "for 5 seconds at a power of 200 MW.\n"
-            "You are allowed 8 MW above or below this target.\n"
-            "The reactor will melt-down if it is taken above 250 MW!\n\n"
-            "You can control the reactor by pressing 'w' or 'up' to raise the control rods, "
-            "and 's' or 'down' to lower them.\n"
-            "Press 'space' to SCRAM the reactor to slam the control rods down to stop an "
-            "accidental melt-down!\n\n"
-            "Hold then release 'enter' to start the simulation."
-        )
 
     # -- Per-frame rendering ----------------------------------------------
 
@@ -366,10 +349,6 @@ class System:
         ]
 
     def _update_graph(self):
-        self._log_function_call("_update_graph")
-        self.pk_n_line.set_xdata(self.full_history_times)
-        self.pk_n_line.set_ydata(self.full_history_powers)
-
         elapsed = time.time() - self.graph_start_time
         # Window is always N_HISTORY_WINDOW_S wide. Starts pinned at 0 (never shows
         # negative/pre-game time), so the live point crawls from the left edge; once
@@ -392,20 +371,6 @@ class System:
 
     def _load_leaderboard(self):
         entries = []
-        '''try:
-            with open(RAW_SCORES_PATH) as raw_scores:
-                for line in raw_scores:
-                    time_str, _, name = line.strip().partition(",")
-                    if not time_str:
-                        continue
-                    try:
-                        entries.append((float(time_str), name))
-                    except ValueError:
-                        continue
-        except FileNotFoundError:
-            pass'''
-        #
-
         with open(RAW_SCORES_PATH, "r") as raw_scores:
             reader = csv.reader(raw_scores)
             for row in reader:
@@ -418,23 +383,27 @@ class System:
 
         entries.sort(key=lambda entry: entry[0])
         self.leaderboard_entries = entries[:LEADERBOARD_MAX_ENTRIES]
+        self._rebuild_leaderboard_surface()
 
-    def _draw_leaderboard(self):
-        x, y = LEADERBOARD_ORIGIN_PX
-        # Clear this column first: once self.running is False (idle screen, post-win
-        # screen) nothing else repaints the background here, so without this a new
-        # score/entry would just be drawn over the top of the previous render instead
-        # of replacing it.
-        self.screen.fill(BLACK, (x, y, *LEADERBOARD_SIZE_PX))
+    def _rebuild_leaderboard_surface(self):
+        # Rendered once here (whenever the leaderboard changes) rather than every
+        # frame in _draw_leaderboard(), which just blits this cached surface.
+        surface = pygame.Surface((int(LEADERBOARD_SIZE_PX[0]), int(LEADERBOARD_SIZE_PX[1])))
+        surface.fill(BLACK)
 
         header = self.fps_font.render("LEADERBOARD", True, GREEN)
-        self.screen.blit(header, (x, y))
-        y += header.get_height() + 10
+        surface.blit(header, (0, 0))
+        y = header.get_height() + 10
 
         for rank, (elapsed, name) in enumerate(self.leaderboard_entries, start=1):
             row = self.fps_font.render(f"{rank}. {name} - {elapsed:.2f}s", True, WHITE)
-            self.screen.blit(row, (x, y))
+            surface.blit(row, (0, y))
             y += row.get_height() + 4
+
+        self._leaderboard_surface = surface
+
+    def _draw_leaderboard(self):
+        self.screen.blit(self._leaderboard_surface, LEADERBOARD_ORIGIN_PX)
 
     def _draw_popup(self, message):
         # popup_surface is a fixed POPUP_WIDTH x POPUP_HEIGHT box, fully repainted and
@@ -489,7 +458,6 @@ class System:
         return name.strip() or "Anonymous"
 
     def _update_leds(self, scramming, at_target):
-        self._log_function_call("_update_leds")
         led_names = list(self.panel_states.LED_strips.keys())
 
         if not self.running:
@@ -535,15 +503,8 @@ class System:
         with open(RAW_SCORES_PATH, "a") as raw_scores:
             score_writer = csv.writer(raw_scores)
             score_writer.writerow([f"{total_elapsed:.3f}", name])
-        #  
         if self.pk_n_animation:
             self._load_leaderboard()
-
-    def _log_function_call(self, function_name):
-        
-        with open(LOG_PATH, "a", newline="") as log_file:
-            log_writer = csv.writer(log_file)
-            log_writer.writerow([function_name, time.time()])
 
     # -- Main loop ----------------------------------------------------------
 
@@ -551,12 +512,10 @@ class System:
         self._init_display()
         if self.pk_n_animation:
             self._init_graph()
-        self._print_welcome_message()
         return self._game_loop()
 
     def _game_loop(self):
         lever_origin_rel_pos = list(self.panel_states.control_rod_lever_rel_pos.values())
-        diff = 0
         use_levers_flag = self.USE_LEVERS_BY_DEFAULT
         show_quit_popup = False
         restart_flag = False
@@ -577,9 +536,6 @@ class System:
             self.panel_states.update_state()
             self._update_leds(self.scramming, at_target)
             lever_rel_pos = list(self.panel_states.control_rod_lever_rel_pos.values())
-            print(lever_rel_pos[0]-diff)
-            diff = lever_rel_pos[0]
-
 
             ##!! To start the game: check if both buttons are pressed and all switches are on
             if self.panel_states.button_states["left_button"] and self.panel_states.button_states["right_button"]:
@@ -629,7 +585,6 @@ class System:
                         if show_quit_popup:
                             ##!! RESTART
                             restart_flag = True
-                            print("Restarting the game...")
                             self.running = False
                             pygame_running = False
                         else:
@@ -666,11 +621,6 @@ class System:
                     self.scramming = True
 
                 elif self.time_at_target_condition >= self.TARGET_HOLD_TIME_S:
-                    print("Congratulations! You have successfully and safely kept the reactor "
-                          "stable for 20 seconds at 200 MW!")
-                    print("You have helped to keep the country's lights on!")
-                    print("Press 'q' or 'escape' to quit.")
-                    
                     self._end_game()
                     victory_flag = True
                     if self.pk_n_animation:
@@ -725,9 +675,7 @@ class System:
         self._end_game()
         return False
 
-    def run_pk(self, thread_num):
-        print(f"Thread {thread_num} is running the point kinetics.")
-
+    def run_pk(self):
         while self.running:
             t_start = time.monotonic()
             self.pk.step(self.frame_time, self.k_eff, method="implicit_heun")
@@ -741,7 +689,3 @@ if __name__ == "__main__":
     while keep_playing:
         system = System(pk_n_animation=True)
         keep_playing = system.main()
-        if keep_playing:
-            print("Restarting the game...")
-        else:
-            print("Thanks for playing!")
