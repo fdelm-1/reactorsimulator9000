@@ -1,4 +1,4 @@
-"""Windows/desktop entry point for Reactor Simulator 9000.
+"""Desktop entry point for Reactor Simulator 9000.
 
 game_new.py talks to the physical Raspberry Pi control panel (GPIO-driven levers,
 switches and LEDs) via MyControlPanelStates, which ties the game to a Pi. The
