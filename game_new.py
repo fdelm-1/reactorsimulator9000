@@ -31,6 +31,7 @@ GRAPH_MARGIN_RIGHT = 20
 GRAPH_MARGIN_TOP = 70
 GRAPH_MARGIN_BOTTOM = 50
 GRAPH_BORDER_WIDTH = 2
+GRAPH_LINE_WIDTH = 4
 TARGET_ZONE_ALPHA = 130
 FAILURE_ZONE_ALPHA = 130
 Y_GRID_STEP_MW = 50
@@ -75,14 +76,15 @@ class System:
 
     MIN_ALLOWABLE_K_EFF = 0.975
 
-    # k_eff contributed by a given lever when it's pushed all the way up / all the way
-    # down (left, middle, right). Each is linear in between and passes through 1.0 a
-    # third of the way up, so k_eff is exactly LEVER_COMBINED_MAX_K_EFF (1.007) when all
-    # three are simultaneously all the way up, 0.9965 when all three are all the way
-    # down, and 1.0 when all three are a third of the way up.
-    LEVER_MAX_K_EFF = [1.004, 1.002, 1.001]
-    LEVER_MIN_K_EFF = [0.998, 0.999, 0.9995]
-    LEVER_COMBINED_MAX_K_EFF = 1.0 + sum(m - 1.0 for m in LEVER_MAX_K_EFF)
+    # k_eff with all levers fully up (neutral - no lever contributes anything).
+    BASE_K_EFF = 1.009
+
+    # How much each lever (left, middle, right) subtracts from BASE_K_EFF when pushed
+    # all the way down; 0 when pushed all the way up (no effect at maximum), linear
+    # in between. Levers only ever pull k_eff down from the base, never push it above.
+    LEVER_MAX_EFFECT = [0.0, 0.0, 0.0]
+    LEVER_MIN_EFFECT = [-0.01, -0.003, -0.001]
+    LEVER_COMBINED_MAX_K_EFF = BASE_K_EFF + sum(LEVER_MAX_EFFECT)
 
     # Yellow LED window: a lever's own k_eff contribution counts as "neutral" (not
     # positive/negative) within +-0.0005 of 1.0, rather than requiring it to land on
@@ -102,7 +104,7 @@ class System:
         self.frame_time = 1 / framerate
 
         self.pk = PointKinetics()
-        self.k_eff = 1.0
+        self.k_eff = self.BASE_K_EFF
 
         self.pk_n_animation = pk_n_animation
         self.complexity_level = complexity_level
@@ -131,22 +133,21 @@ class System:
         self.pk_thread.start()
 
     def update_pygame_keff_from_levers(self, lever_current_rel_pos, lever_origin_rel_pos=(0.75, 0.75, 0.75)):
-        """Each lever contributes linearly across its full travel (LEVER_MIN_K_EFF all
-        the way down to LEVER_MAX_K_EFF all the way up), with no flat/dead band - the
-        physical lever is a plain slider potentiometer, so its software response
-        should track it continuously rather than pinning to 1.0 near the median.
-        Since every lever passes through 1.0 exactly a third of the way up, k_eff is
-        1.0 when all three sit there, and LEVER_COMBINED_MAX_K_EFF only when all three
-        are simultaneously pushed all the way up.
+        """Each lever contributes linearly across its full travel (LEVER_MIN_EFFECT all
+        the way down to LEVER_MAX_EFFECT, i.e. 0, all the way up), with no flat/dead
+        band - the physical lever is a plain slider potentiometer, so its software
+        response should track it continuously rather than pinning to a value near the
+        median. k_eff is BASE_K_EFF when all three levers are all the way up, and
+        BASE_K_EFF + sum(LEVER_MIN_EFFECT) when all three are all the way down.
         """
-        temp_k_eff = 1.0
+        temp_k_eff = self.BASE_K_EFF
 
         for i, rel_pos in enumerate(lever_current_rel_pos):
             # This hardware reports a higher rel_pos the further DOWN the lever is
             # pushed, so convert to "how far up" before applying the linear response.
             up_fraction = 1.0 - rel_pos
-            min_k_eff, max_k_eff = self.LEVER_MIN_K_EFF[i], self.LEVER_MAX_K_EFF[i]
-            lever_value = min_k_eff + (max_k_eff - min_k_eff) * up_fraction - 1.0
+            min_effect, max_effect = self.LEVER_MIN_EFFECT[i], self.LEVER_MAX_EFFECT[i]
+            lever_value = min_effect + (max_effect - min_effect) * up_fraction
             temp_k_eff += lever_value
 
             # LED colour: green when this lever's own contribution is positive,
@@ -173,7 +174,7 @@ class System:
         self.clock = pygame.time.Clock()
         self.fps_font = pygame.font.Font(FONT_PATH, 20)
 
-        self.pygame_k_eff = 1.000
+        self.pygame_k_eff = self.BASE_K_EFF
         self.inc = 0.00005 * 30 / self.frame_rate
         self.scram_rate = 10 * self.inc
         self.lifting_rod = False
@@ -326,7 +327,7 @@ class System:
         ]
         if len(points) >= 2:
             surface.set_clip(plot_rect)
-            pygame.draw.aalines(surface, GREEN, False, points)
+            pygame.draw.lines(surface, GREEN, False, points, GRAPH_LINE_WIDTH)
             surface.set_clip(None)
 
         title_surface = title_font.render(title, True, GREEN)
@@ -364,9 +365,8 @@ class System:
 
     def _draw_final_graph(self):
         """Freeze the graph on the full 0-n second power trace for the win screen."""
-        total_time = self.full_history_times[-1]
-        self._render_graph(0.0, total_time, "!!!YOU WIN!!!",
-                            self.graph_win_title_font, self._hud_lines(total_time))
+        self._render_graph(0.0, self.final_elapsed_time, "!!!YOU WIN!!!",
+                            self.graph_win_title_font, self._hud_lines(self.final_elapsed_time))
         self._blit_graph()
 
     def _load_leaderboard(self):
@@ -499,10 +499,9 @@ class System:
         self.pk.reset_sol()
 
     def _record_score(self, name):
-        total_elapsed = time.time() - self.graph_start_time
         with open(RAW_SCORES_PATH, "a") as raw_scores:
             score_writer = csv.writer(raw_scores)
-            score_writer.writerow([f"{total_elapsed:.3f}", name])
+            score_writer.writerow([f"{self.final_elapsed_time:.3f}", name])
         if self.pk_n_animation:
             self._load_leaderboard()
 
@@ -623,6 +622,7 @@ class System:
                 elif self.time_at_target_condition >= self.TARGET_HOLD_TIME_S:
                     self._end_game()
                     victory_flag = True
+                    self.final_elapsed_time = time.time() - self.graph_start_time
                     if self.pk_n_animation:
                         self._draw_final_graph()
                     name = self._prompt_for_name()
