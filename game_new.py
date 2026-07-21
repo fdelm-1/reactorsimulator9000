@@ -1,15 +1,11 @@
 """Reactor Simulator 9000 - a pygame control panel for a point-kinetics reactor model."""
 
 import time
+import math
+import bisect
 import threading
 from os import environ
 import csv
-
-import matplotlib
-import matplotlib.backends.backend_agg as agg
-import matplotlib.font_manager as fm
-from matplotlib.figure import Figure
-from matplotlib.ticker import FormatStrFormatter
 
 from point_kinetics import PointKinetics
 
@@ -23,12 +19,22 @@ WIDTH, HEIGHT = 1920, 1080
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 GREEN = "#74e47c"
+GREEN_RGB = (0x74, 0xE4, 0x7C)
+RED_RGB = (255, 0, 0)
+GRID_COLOR = (90, 90, 90)
 FONT_PATH = "./fonts/retro.ttf"
 
-GRAPH_FIGSIZE_IN = (9, 8)
-GRAPH_DPI = 100
 GRAPH_ORIGIN_PX = (WIDTH * 0.3, HEIGHT * 0.2)
-GRAPH_SIZE_PX = (GRAPH_FIGSIZE_IN[0] * GRAPH_DPI, GRAPH_FIGSIZE_IN[1] * GRAPH_DPI)
+GRAPH_SIZE_PX = (900, 800)
+GRAPH_MARGIN_LEFT = 70
+GRAPH_MARGIN_RIGHT = 20
+GRAPH_MARGIN_TOP = 70
+GRAPH_MARGIN_BOTTOM = 50
+GRAPH_BORDER_WIDTH = 2
+TARGET_ZONE_ALPHA = 130
+FAILURE_ZONE_ALPHA = 130
+Y_GRID_STEP_MW = 50
+
 LEADERBOARD_ORIGIN_PX = (GRAPH_ORIGIN_PX[0] + GRAPH_SIZE_PX[0] + 20, GRAPH_ORIGIN_PX[1])
 LEADERBOARD_SIZE_PX = (WIDTH - LEADERBOARD_ORIGIN_PX[0], GRAPH_SIZE_PX[1])
 LEADERBOARD_MAX_ENTRIES = 10
@@ -63,8 +69,8 @@ class System:
     MIN_DISPLAY_POWER_MW = 1  # displayed/plotted power never reads below this
 
     # Fixed graph y-axis range in MW. Kept constant (no per-frame autoscaling from the
-    # data's min/max) so the view never "zooms" and set_ylim() is only called once -
-    # this was a meaningful chunk of the matplotlib redraw cost per frame on the Pi.
+    # data's min/max) so the view never "zooms" and the y-gridlines only need drawing
+    # once, into the cached static background (see _rebuild_graph_static_background).
     Y_AXIS_MIN_MW = 0
     Y_AXIS_MAX_MW = 300
 
@@ -183,73 +189,82 @@ class System:
         self.time_at_target_condition = 0.0
 
     def _init_graph(self):
-        upper_time_bound = 0.5 * self.N_HISTORY_WINDOW_S
+        self.graph_surface = pygame.Surface(GRAPH_SIZE_PX)
 
-        fm.fontManager.addfont(FONT_PATH)
-        self.custom_font = fm.FontProperties(fname=FONT_PATH)
-        matplotlib.rcParams["font.family"] = self.custom_font.get_name()
+        self.graph_tick_font = pygame.font.Font(FONT_PATH, 14)
+        self.graph_label_font = pygame.font.Font(FONT_PATH, 18)
+        self.graph_title_font = pygame.font.Font(FONT_PATH, 26)
+        self.graph_win_title_font = pygame.font.Font(FONT_PATH, 34)
 
-        self.fig = Figure(figsize=GRAPH_FIGSIZE_IN, dpi=GRAPH_DPI, facecolor="black")
-        self.canvas = agg.FigureCanvasAgg(self.fig)
-        ax = self.fig.gca()
-        ax.set_facecolor("black")
-        ax.tick_params(axis="x", colors=GREEN)
-        ax.tick_params(axis="y", colors=GREEN)
-        for spine in ("bottom", "left", "top", "right"):
-            ax.spines[spine].set_visible(True)
-            ax.spines[spine].set_color(GREEN)
-            ax.spines[spine].set_linewidth(2.0)
-
-        ax.set_xlabel("Time (s)", color=GREEN, weight="bold", fontproperties=self.custom_font, labelpad=15)
-        ax.set_ylabel("Power (MW)", color=GREEN, weight="bold", fontproperties=self.custom_font, labelpad=15)
-        ax.yaxis.set_major_formatter(FormatStrFormatter("%.1f"))
-        ax.set_title("REACTOR SIMULATOR 9000", color=GREEN, weight="bold",
-                      fontproperties=self.custom_font, y=1.02)
-
-        # The live view starts at t=0 and grows/rolls forward from there (see
-        # _update_graph) - no fixed initial range to hold onto here.
-        ax.set_xlim(0, self.N_HISTORY_WINDOW_S)
-
-        # Fixed range, set once - never rescaled per frame.
-        ax.set_ylim(self.Y_AXIS_MIN_MW, self.Y_AXIS_MAX_MW)
-        self._y_range = self.Y_AXIS_MAX_MW - self.Y_AXIS_MIN_MW
+        self.graph_plot_rect = pygame.Rect(
+            GRAPH_MARGIN_LEFT, GRAPH_MARGIN_TOP,
+            GRAPH_SIZE_PX[0] - GRAPH_MARGIN_LEFT - GRAPH_MARGIN_RIGHT,
+            GRAPH_SIZE_PX[1] - GRAPH_MARGIN_TOP - GRAPH_MARGIN_BOTTOM,
+        )
 
         # Accumulated once per frame in _record_history_sample(); starts empty so the
-        # live plot has no pre-filled lead-in and genuinely begins at t=0.
+        # live plot has no pre-filled lead-in and genuinely begins at t=0. Kept as
+        # plain lists - the live view only ever processes the slice within the
+        # current window (see _render_graph), found by bisecting the monotonically
+        # increasing timestamps, so this stays cheap regardless of session length.
         self.full_history_times = []
         self.full_history_powers = []
 
-        self.pk_n_line = ax.plot(
-            self.full_history_times,
-            self.full_history_powers,
-            color=GREEN,
-        )[0]
-
-        ax.grid(True, color="grey", linewidth=0.3)
-
-        span = [-self.N_HISTORY_WINDOW_S * 1000, upper_time_bound * 1000,
-                upper_time_bound * 1000, -self.N_HISTORY_WINDOW_S * 1000]
-        ax.fill(span, [self.TARGET_POWER_LOWER_MW, self.TARGET_POWER_LOWER_MW,
-                       self.TARGET_POWER_UPPER_MW, self.TARGET_POWER_UPPER_MW],
-                color=GREEN, alpha=0.5)
-        ax.fill(span, [self.FAILURE_POWER_MW, self.FAILURE_POWER_MW,
-                       self.FAILURE_ZONE_TOP_MW, self.FAILURE_ZONE_TOP_MW],
-                color="red", alpha=0.5)
-
-        text_x = 0.70 * self.N_HISTORY_WINDOW_S
-        self.power_text = ax.text(text_x, self.Y_AXIS_MIN_MW + 0.95 * self._y_range,
-                                   self._power_str(self._display_power()), color=GREEN, fontproperties=self.custom_font)
-        self.keff_text = ax.text(text_x, self.Y_AXIS_MIN_MW + 0.90 * self._y_range,
-                                  self._keff_str(self.k_eff), color=GREEN, fontproperties=self.custom_font)
-        self.target_time_text = ax.text(text_x, self.Y_AXIS_MIN_MW + 0.82 * self._y_range,
-                                         self._time_at_target_str(0.0), color=GREEN, fontproperties=self.custom_font)
-        self.elapsed_time_text = ax.text(text_x, self.Y_AXIS_MIN_MW + 0.78 * self._y_range,
-                                          self._time_elapsed_str(0.0), color=GREEN, fontproperties=self.custom_font)
-
-        self.ax = ax
+        self._rebuild_graph_static_background()
         self.graph_start_time = time.time()
         self._load_leaderboard()
         self._update_graph()
+
+    def _mw_to_px(self, mw):
+        frac = (mw - self.Y_AXIS_MIN_MW) / (self.Y_AXIS_MAX_MW - self.Y_AXIS_MIN_MW)
+        return self.graph_plot_rect.bottom - frac * self.graph_plot_rect.height
+
+    def _time_to_px(self, t, window_start, window_end):
+        frac = (t - window_start) / (window_end - window_start)
+        return self.graph_plot_rect.left + frac * self.graph_plot_rect.width
+
+    def _draw_translucent_band(self, surface, mw_low, mw_high, color_rgb, alpha):
+        plot_rect = self.graph_plot_rect
+        y_top = max(self._mw_to_px(mw_high), plot_rect.top)
+        y_bottom = min(self._mw_to_px(mw_low), plot_rect.bottom)
+        if y_bottom <= y_top:
+            return
+        band = pygame.Surface((plot_rect.width, y_bottom - y_top), pygame.SRCALPHA)
+        band.fill((*color_rgb, alpha))
+        surface.blit(band, (plot_rect.left, y_top))
+
+    def _rebuild_graph_static_background(self):
+        """Everything that never changes while the graph is up: the y-axis never
+        rescales, and the target/failure bands are fixed MW ranges, so all of this
+        only needs to be drawn once instead of every frame.
+        """
+        bg = pygame.Surface(GRAPH_SIZE_PX)
+        bg.fill(BLACK)
+        plot_rect = self.graph_plot_rect
+
+        self._draw_translucent_band(bg, self.TARGET_POWER_LOWER_MW, self.TARGET_POWER_UPPER_MW,
+                                     GREEN_RGB, TARGET_ZONE_ALPHA)
+        self._draw_translucent_band(bg, self.FAILURE_POWER_MW,
+                                     min(self.FAILURE_ZONE_TOP_MW, self.Y_AXIS_MAX_MW),
+                                     RED_RGB, FAILURE_ZONE_ALPHA)
+
+        mw = self.Y_AXIS_MIN_MW
+        while mw <= self.Y_AXIS_MAX_MW:
+            y = self._mw_to_px(mw)
+            pygame.draw.line(bg, GRID_COLOR, (plot_rect.left, y), (plot_rect.right, y))
+            label = self.graph_tick_font.render(f"{mw:.0f}", True, GREEN)
+            bg.blit(label, (plot_rect.left - label.get_width() - 6, y - label.get_height() // 2))
+            mw += Y_GRID_STEP_MW
+
+        pygame.draw.rect(bg, GREEN, plot_rect, GRAPH_BORDER_WIDTH)
+
+        power_label = self.graph_label_font.render("Power (MW)", True, GREEN)
+        bg.blit(power_label, (plot_rect.left, plot_rect.top - power_label.get_height() - 8))
+
+        time_label = self.graph_label_font.render("Time (s)", True, GREEN)
+        bg.blit(time_label, (plot_rect.centerx - time_label.get_width() // 2, plot_rect.bottom + 28))
+
+        self.graph_static_bg = bg
 
     @staticmethod
     def _power_str(power):
@@ -294,10 +309,59 @@ class System:
         self.full_history_powers.append(self._display_power())
 
     def _blit_graph(self):
-        self.canvas.draw()
-        renderer = self.canvas.get_renderer()
-        surf = pygame.image.frombuffer(renderer.buffer_rgba(), self.canvas.get_width_height(), "RGBA")
-        self.screen.blit(surf, GRAPH_ORIGIN_PX)
+        self.screen.blit(self.graph_surface, GRAPH_ORIGIN_PX)
+
+    def _render_graph(self, window_start, window_end, title, title_font, hud_lines):
+        surface = self.graph_surface
+        plot_rect = self.graph_plot_rect
+        surface.blit(self.graph_static_bg, (0, 0))
+
+        # X gridlines + labels are the only dynamic part of the axes, since the
+        # window slides/widens over time. Step adapts to the window's width so a
+        # wide (post-win, full-session) window doesn't draw hundreds of lines.
+        step = max(1, round((window_end - window_start) / 8))
+        t = math.ceil(window_start / step) * step
+        while t <= window_end:
+            x = self._time_to_px(t, window_start, window_end)
+            pygame.draw.line(surface, GRID_COLOR, (x, plot_rect.top), (x, plot_rect.bottom))
+            label = self.graph_tick_font.render(f"{t:.0f}", True, GREEN)
+            surface.blit(label, (x - label.get_width() // 2, plot_rect.bottom + 6))
+            t += step
+
+        # Power line: only the points within the visible window (found by bisecting
+        # the monotonically increasing timestamps), plus one point on either side so
+        # the line doesn't visibly start/end mid-air at the window's edge.
+        left = bisect.bisect_left(self.full_history_times, window_start)
+        right = bisect.bisect_right(self.full_history_times, window_end)
+        left = max(0, left - 1)
+        right = min(len(self.full_history_times), right + 1)
+        points = [
+            (self._time_to_px(t, window_start, window_end), self._mw_to_px(mw))
+            for t, mw in zip(self.full_history_times[left:right], self.full_history_powers[left:right])
+        ]
+        if len(points) >= 2:
+            surface.set_clip(plot_rect)
+            pygame.draw.aalines(surface, GREEN, False, points)
+            surface.set_clip(None)
+
+        title_surface = title_font.render(title, True, GREEN)
+        surface.blit(title_surface, (GRAPH_SIZE_PX[0] // 2 - title_surface.get_width() // 2, 10))
+
+        hud_x, hud_y = plot_rect.left + 10, plot_rect.top + 10
+        for line in hud_lines:
+            for sub_line in line.split("\n"):
+                text_surface = self.graph_label_font.render(sub_line, True, GREEN)
+                surface.blit(text_surface, (hud_x, hud_y))
+                hud_y += text_surface.get_height() + 2
+            hud_y += 6
+
+    def _hud_lines(self, time_elapsed_value):
+        return [
+            self._power_str(self._display_power()),
+            self._keff_str(self.k_eff),
+            self._time_at_target_str(self.time_at_target_condition),
+            self._time_elapsed_str(time_elapsed_value),
+        ]
 
     def _update_graph(self):
         _log_function_call("_update_graph")
@@ -312,48 +376,16 @@ class System:
         # letting it reach the right edge.
         window_start = max(0.0, elapsed - self.LIVE_POINT_FRACTION * self.N_HISTORY_WINDOW_S)
         window_end = window_start + self.N_HISTORY_WINDOW_S
-        self.ax.set_xlim(window_start, window_end)
 
-        text_x = window_start + 0.02 * (window_end - window_start)
-
-        # Y-axis is fixed (see _init_graph), so only the x position needs updating each frame.
-        self.power_text.set_text(self._power_str(self._display_power()))
-        self.power_text.set_x(text_x)
-
-        self.keff_text.set_text(self._keff_str(self.k_eff))
-        self.keff_text.set_x(text_x)
-
-        self.target_time_text.set_text(self._time_at_target_str(self.time_at_target_condition))
-        self.target_time_text.set_x(text_x)
-
-        self.elapsed_time_text.set_text(self._time_elapsed_str(elapsed))
-        self.elapsed_time_text.set_x(text_x)
-
+        self._render_graph(window_start, window_end, "REACTOR SIMULATOR 9000",
+                            self.graph_title_font, self._hud_lines(elapsed))
         self._blit_graph()
 
     def _draw_final_graph(self):
         """Freeze the graph on the full 0-n second power trace for the win screen."""
-        self.pk_n_line.set_xdata(self.full_history_times)
-        self.pk_n_line.set_ydata(self.full_history_powers)
-
         total_time = self.full_history_times[-1]
-        self.ax.set_xlim(0, total_time)
-        self.ax.set_title("!!!YOU WIN!!!", color=GREEN, weight="bold",
-                           fontproperties=self.custom_font, y=1.02, fontsize=30)
-
-        text_x = total_time * 0.7
-        self.power_text.set_text(self._power_str(self._display_power()))
-        self.power_text.set_x(text_x)
-
-        self.keff_text.set_text(self._keff_str(self.k_eff))
-        self.keff_text.set_x(text_x)
-
-        self.target_time_text.set_text(self._time_at_target_str(self.time_at_target_condition))
-        self.target_time_text.set_x(text_x)
-
-        self.elapsed_time_text.set_text(self._time_elapsed_str(total_time))
-        self.elapsed_time_text.set_x(text_x)
-
+        self._render_graph(0.0, total_time, "!!!YOU WIN!!!",
+                            self.graph_win_title_font, self._hud_lines(total_time))
         self._blit_graph()
 
     def _load_leaderboard(self):
