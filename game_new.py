@@ -33,7 +33,6 @@ LEADERBOARD_ORIGIN_PX = (GRAPH_ORIGIN_PX[0] + GRAPH_SIZE_PX[0] + 20, GRAPH_ORIGI
 LEADERBOARD_SIZE_PX = (WIDTH - LEADERBOARD_ORIGIN_PX[0], GRAPH_SIZE_PX[1])
 LEADERBOARD_MAX_ENTRIES = 10
 RAW_SCORES_PATH = "raw_scores.csv"
-TIME_CHECK_PATH = "lever_time_check.csv"
 
 # Popups (name entry, quit/restart instructions) live in the strip above the graph
 # (which starts at GRAPH_ORIGIN_PX[1]) instead of screen-centre, so they never
@@ -119,7 +118,7 @@ class System:
         return MyControlPanelStates()
 
     def main(self):
-        self.pk_thread = threading.Thread(target=self.run_pk, args=(1,))
+        self.pk_thread = threading.Thread(target=self.run_pk)
         return self.run_pygame()
 
     def start_simulation(self):
@@ -343,20 +342,6 @@ class System:
 
     def _load_leaderboard(self):
         entries = []
-        '''try:
-            with open(RAW_SCORES_PATH) as raw_scores:
-                for line in raw_scores:
-                    time_str, _, name = line.strip().partition(",")
-                    if not time_str:
-                        continue
-                    try:
-                        entries.append((float(time_str), name))
-                    except ValueError:
-                        continue
-        except FileNotFoundError:
-            pass'''
-        #
-
         with open(RAW_SCORES_PATH, "r") as raw_scores:
             reader = csv.reader(raw_scores)
             for row in reader:
@@ -369,23 +354,27 @@ class System:
 
         entries.sort(key=lambda entry: entry[0])
         self.leaderboard_entries = entries[:LEADERBOARD_MAX_ENTRIES]
+        self._rebuild_leaderboard_surface()
 
-    def _draw_leaderboard(self):
-        x, y = LEADERBOARD_ORIGIN_PX
-        # Clear this column first: once self.running is False (idle screen, post-win
-        # screen) nothing else repaints the background here, so without this a new
-        # score/entry would just be drawn over the top of the previous render instead
-        # of replacing it.
-        self.screen.fill(BLACK, (x, y, *LEADERBOARD_SIZE_PX))
+    def _rebuild_leaderboard_surface(self):
+        # Rendered once here (whenever the leaderboard changes) rather than every
+        # frame in _draw_leaderboard(), which just blits this cached surface.
+        surface = pygame.Surface((int(LEADERBOARD_SIZE_PX[0]), int(LEADERBOARD_SIZE_PX[1])))
+        surface.fill(BLACK)
 
         header = self.fps_font.render("LEADERBOARD", True, GREEN)
-        self.screen.blit(header, (x, y))
-        y += header.get_height() + 10
+        surface.blit(header, (0, 0))
+        y = header.get_height() + 10
 
         for rank, (elapsed, name) in enumerate(self.leaderboard_entries, start=1):
             row = self.fps_font.render(f"{rank}. {name} - {elapsed:.2f}s", True, WHITE)
-            self.screen.blit(row, (x, y))
+            surface.blit(row, (0, y))
             y += row.get_height() + 4
+
+        self._leaderboard_surface = surface
+
+    def _draw_leaderboard(self):
+        self.screen.blit(self._leaderboard_surface, LEADERBOARD_ORIGIN_PX)
 
     def _draw_popup(self, message):
         # popup_surface is a fixed POPUP_WIDTH x POPUP_HEIGHT box, fully repainted and
@@ -485,7 +474,6 @@ class System:
         with open(RAW_SCORES_PATH, "a") as raw_scores:
             score_writer = csv.writer(raw_scores)
             score_writer.writerow([f"{total_elapsed:.3f}", name])
-        #  
         if self.pk_n_animation:
             self._load_leaderboard()
 
@@ -499,7 +487,6 @@ class System:
 
     def _game_loop(self):
         lever_origin_rel_pos = list(self.panel_states.control_rod_lever_rel_pos.values())
-        diff = 0
         use_levers_flag = self.USE_LEVERS_BY_DEFAULT
         show_quit_popup = False
         restart_flag = False
@@ -664,8 +651,7 @@ class System:
         self._end_game()
         return False
 
-    def run_pk(self, thread_num):
-
+    def run_pk(self):
         while self.running:
             t_start = time.monotonic()
             self.pk.step(self.frame_time, self.k_eff, method="implicit_heun")

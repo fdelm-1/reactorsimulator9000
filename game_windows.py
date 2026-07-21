@@ -46,7 +46,3 @@ if __name__ == "__main__":
     while keep_playing:
         system = WindowsSystem(pk_n_animation=True)
         keep_playing = system.main()
-        if keep_playing:
-            print("Restarting the game...")
-        else:
-            print("Thanks for playing!")
