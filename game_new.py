@@ -579,14 +579,11 @@ class System:
                         use_levers_flag = not use_levers_flag
 
                     if event.key == pygame.K_4:
-                        if show_quit_popup:
-                            ##!! RESTART
-                            restart_flag = True
-                            self.running = False
-                            pygame_running = False
-                        else:
-                            show_quit_popup = True
-                            self._draw_popup(quit_restart_message)
+                        show_quit_popup:
+                        ##!! RESTART
+                        restart_flag = True
+                        self.running = False
+                        pygame_running = False
 
                 elif event.type == pygame.KEYUP:
                     if event.key == pygame.K_1 and not self.running:
