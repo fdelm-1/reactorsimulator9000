@@ -608,6 +608,7 @@ class System:
                     self.time_at_target_condition += self.clock.get_time() / 1000.0
                 else:
                     at_target = False
+                    self.time_at_target_condition = 0.0                    
 
                 if self.pk.n > self.FAILURE_POWER_MW:
                     self.scramming = True
