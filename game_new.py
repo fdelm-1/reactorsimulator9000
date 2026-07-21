@@ -40,7 +40,6 @@ TIME_CHECK_PATH = "lever_time_check.csv"
 # block the game view.
 POPUP_WIDTH, POPUP_HEIGHT = 800, 170
 POPUP_TOP_MARGIN = 20
-diff = [0,0,0]
 
 
 class System:
@@ -515,6 +514,7 @@ class System:
 
     def _game_loop(self):
         lever_origin_rel_pos = list(self.panel_states.control_rod_lever_rel_pos.values())
+        diff = 0
         use_levers_flag = self.USE_LEVERS_BY_DEFAULT
         show_quit_popup = False
         restart_flag = False
@@ -535,9 +535,8 @@ class System:
             self.panel_states.update_state()
             self._update_leds(self.scramming, at_target)
             lever_rel_pos = list(self.panel_states.control_rod_lever_rel_pos.values())
-            #print(f"Lever positions: {lever_rel_pos}, Buttons: {self.panel_states.button_states}, Switches: {self.panel_states.switch_states}")
-            print(diff[0]-lever_rel_pos[0], diff[1]-lever_rel_pos[1], diff[2]-lever_rel_pos[2])
-            diff = [lever_rel_pos[0], lever_rel_pos[1], lever_rel_pos[2]]
+            print(lever_rel_pos[0]-diff)
+            diff = lever_rel_pos[0]
 
             with open(TIME_CHECK_PATH, "a") as time_check:
                 time_writer = csv.writer(time_check)
