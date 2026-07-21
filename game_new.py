@@ -66,7 +66,7 @@ class System:
     TARGET_HOLD_TIME_S = 5.0
     FAILURE_POWER_MW = 250
     FAILURE_ZONE_TOP_MW = 500  # how far up the graph's red danger band is drawn
-    MIN_DISPLAY_POWER_MW = 1  # displayed/plotted power never reads below this
+    MIN_DISPLAY_POWER_MW = 10  # displayed/plotted power never reads below this
 
     # Fixed graph y-axis range in MW. Kept constant (no per-frame autoscaling from the
     # data's min/max) so the view never "zooms" and the y-gridlines only need drawing
@@ -82,9 +82,7 @@ class System:
     # How much each lever (left, middle, right) subtracts from BASE_K_EFF when pushed
     # all the way down; 0 when pushed all the way up (no effect at maximum), linear
     # in between. Levers only ever pull k_eff down from the base, never push it above.
-    LEVER_MAX_EFFECT = [0.0, 0.0, 0.0]
     LEVER_MIN_EFFECT = [-0.01, -0.003, -0.001]
-    LEVER_COMBINED_MAX_K_EFF = BASE_K_EFF + sum(LEVER_MAX_EFFECT)
 
     # Yellow LED window: a lever's own k_eff contribution counts as "neutral" (not
     # positive/negative) within +-0.0005 of 1.0, rather than requiring it to land on
@@ -183,7 +181,7 @@ class System:
 
         # Tied to the levers' real combined ceiling so pygame_k_eff is never clamped
         # short of what the levers can actually produce, and "MAXIMUM!" can display.
-        self.max_allowable_k_eff = self.LEVER_COMBINED_MAX_K_EFF
+        self.max_allowable_k_eff = self.BASE_K_EFF
 
         self.running = False
         self.time_at_target_condition = 0.0
