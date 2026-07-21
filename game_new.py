@@ -132,10 +132,10 @@ class System:
 
     def update_pygame_keff_from_levers(self, lever_current_rel_pos, lever_origin_rel_pos=(0.75, 0.75, 0.75)):
         """Each lever contributes linearly across its full travel (LEVER_MIN_EFFECT all
-        the way down to LEVER_MAX_EFFECT, i.e. 0, all the way up), with no flat/dead
-        band - the physical lever is a plain slider potentiometer, so its software
-        response should track it continuously rather than pinning to a value near the
-        median. k_eff is BASE_K_EFF when all three levers are all the way up, and
+        the way down to no effect all the way up), with no flat/dead band - the
+        physical lever is a plain slider potentiometer, so its software response
+        should track it continuously rather than pinning to a value near the median.
+        k_eff is BASE_K_EFF when all three levers are all the way up, and
         BASE_K_EFF + sum(LEVER_MIN_EFFECT) when all three are all the way down.
         """
         temp_k_eff = self.BASE_K_EFF
@@ -144,8 +144,7 @@ class System:
             # This hardware reports a higher rel_pos the further DOWN the lever is
             # pushed, so convert to "how far up" before applying the linear response.
             up_fraction = 1.0 - rel_pos
-            min_effect, max_effect = self.LEVER_MIN_EFFECT[i], self.LEVER_MAX_EFFECT[i]
-            lever_value = min_effect + (max_effect - min_effect) * up_fraction
+            lever_value = self.LEVER_MIN_EFFECT[i] * (1.0 - up_fraction)
             temp_k_eff += lever_value
 
             # LED colour: green when this lever's own contribution is positive,
