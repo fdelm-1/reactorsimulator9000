@@ -5,6 +5,41 @@ import smbus
 from time import sleep
 from itertools import chain
 
+# Measured (physical position as a fraction of the lever's travel, raw linear
+# rel_pos) calibration points for a 10cm lever - these pots are logarithmic taper,
+# not linear, so the raw ADC-derived rel_pos doesn't vary linearly with physical
+# position even though its 0/1 endpoints are correct. Only one lever was physically
+# measured; applied to all three since they're the same part.
+LEVER_CALIBRATION = [
+    (0.0, 0.99),
+    (0.1, 0.967),
+    (0.2, 0.94),
+    (0.3, 0.894),
+    (0.4, 0.83),
+    (0.5, 0.76),
+    (0.6, 0.66),
+    (0.7, 0.47),
+    (0.8, 0.18),
+    (1.0, 0.0),
+]
+_CALIBRATION_BY_RAW = sorted(LEVER_CALIBRATION, key=lambda point: point[1])
+_CALIBRATION_RAW = [point[1] for point in _CALIBRATION_BY_RAW]
+_CALIBRATION_UP_FRACTION = [point[0] for point in _CALIBRATION_BY_RAW]
+
+
+def _linear_interp(x, xp, fp):
+    """Linear interpolation; xp must be sorted ascending. Clamps outside its range."""
+    if x <= xp[0]:
+        return fp[0]
+    if x >= xp[-1]:
+        return fp[-1]
+    for i in range(1, len(xp)):
+        if x <= xp[i]:
+            t = (x - xp[i - 1]) / (xp[i] - xp[i - 1])
+            return fp[i - 1] + t * (fp[i] - fp[i - 1])
+    return fp[-1]
+
+
 class ControlRodLever:
     def __init__(self, channel, min_V=0.1, max_V=1.0, clock_pin=21, mosi_pin=20, miso_pin=19, select_pin=16) -> None:
         self.channel = channel
@@ -21,14 +56,16 @@ class ControlRodLever:
         return
 
     def update_rel_pos(self):
-        self.rel_pos = (self.adc.value - self.min_V) / (self.max_V - self.min_V) 
-        
-        ## Ensure rel_pos is within 0 and 1
-        if self.rel_pos < 0.0:
-            self.rel_pos = 0.0
-        elif self.rel_pos > 1.0:
-            self.rel_pos = 1.0
+        raw = (self.adc.value - self.min_V) / (self.max_V - self.min_V)
+        raw = min(max(raw, 0.0), 1.0)
 
+        # Correct the raw (linear-in-voltage, not linear-in-position) reading
+        # against the measured calibration table.
+        up_fraction = _linear_interp(raw, _CALIBRATION_RAW, _CALIBRATION_UP_FRACTION)
+
+        # Preserve the existing convention - game_new.py computes
+        # up_fraction = 1 - rel_pos, so nothing downstream needs to change.
+        self.rel_pos = 1.0 - up_fraction
         return self.rel_pos
 
 
