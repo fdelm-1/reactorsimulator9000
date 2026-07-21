@@ -79,6 +79,11 @@ class System:
     LEVER_MIN_K_EFF = [0.998, 0.999, 0.9995]
     LEVER_COMBINED_MAX_K_EFF = 1.0 + sum(m - 1.0 for m in LEVER_MAX_K_EFF)
 
+    # Yellow LED window: a lever's own k_eff contribution counts as "neutral" (not
+    # positive/negative) within +-0.0005 of 1.0, rather than requiring it to land on
+    # exactly 1.0 - potentiometer/reading inaccuracy meant that never actually happened.
+    LEVER_LED_NEUTRAL_TOLERANCE = 0.0005
+
     # Whether the control-rod levers drive k_eff by default ('8' toggles this in-game).
     # update_pygame_keff_from_levers() sets k_eff purely from the current lever position,
     # so it must be off wherever there's no real lever - otherwise it overwrites the
@@ -140,10 +145,10 @@ class System:
             temp_k_eff += lever_value
 
             # LED colour: green when this lever's own contribution is positive,
-            # yellow at exactly zero, red when negative.
-            if lever_value > 0:
+            # yellow within LEVER_LED_NEUTRAL_TOLERANCE of zero, red when negative.
+            if lever_value > self.LEVER_LED_NEUTRAL_TOLERANCE:
                 self.lever_sign_states[i] = -1
-            elif lever_value < 0:
+            elif lever_value < -self.LEVER_LED_NEUTRAL_TOLERANCE:
                 self.lever_sign_states[i] = 1
             else:
                 self.lever_sign_states[i] = 0
