@@ -74,8 +74,6 @@ class System:
     Y_AXIS_MIN_MW = 0
     Y_AXIS_MAX_MW = 300
 
-    MIN_ALLOWABLE_K_EFF = 0.995
-
     # k_eff with all levers fully up (neutral - no lever contributes anything).
     BASE_K_EFF = 1.0095
 
@@ -83,6 +81,8 @@ class System:
     # all the way down; 0 when pushed all the way up (no effect at maximum), linear
     # in between. Levers only ever pull k_eff down from the base, never push it above.
     LEVER_MIN_EFFECT = [-0.01, -0.003, -0.001]
+
+    MIN_ALLOWABLE_K_EFF = BASE_K_EFF - sum(m for m in LEVER_MIN_EFFECT)
 
     # Yellow LED window: a lever's own k_eff contribution counts as "neutral" (not
     # positive/negative) within +-0.0005 of 1.0, rather than requiring it to land on
