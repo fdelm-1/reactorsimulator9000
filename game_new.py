@@ -270,6 +270,7 @@ class System:
     def _time_elapsed_str(seconds_elapsed):
         return f"Time played = {seconds_elapsed:.2f} s"
 
+
     # -- Per-frame rendering ----------------------------------------------
 
     def _record_history_sample(self):
@@ -506,6 +507,11 @@ class System:
             self.panel_states.update_state()
             self._update_leds(self.scramming, at_target)
             lever_rel_pos = list(self.panel_states.control_rod_lever_rel_pos.values())
+
+
+            with open(TIME_CHECK_PATH, "a") as time_check:
+                time_writer = csv.writer(time_check)
+                time_writer.writerow([f"{time.time():.3f}"])
 
             ##!! To start the game: check if both buttons are pressed and all switches are on
             if self.panel_states.button_states["left_button"] and self.panel_states.button_states["right_button"]:
