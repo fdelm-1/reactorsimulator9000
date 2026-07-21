@@ -1,4 +1,5 @@
 import sys
+import math
 from collections import deque
 from gpiozero import MCP3008
 import RPi.GPIO as GPIO
@@ -8,39 +9,28 @@ from itertools import chain
 
 LEVER_SMOOTHING_WINDOW = 8  # reported rel_pos is the average of this many readings
 
-# Measured (physical position as a fraction of the lever's travel, raw linear
-# rel_pos) calibration points for a 10cm lever - these pots are logarithmic taper,
-# not linear, so the raw ADC-derived rel_pos doesn't vary linearly with physical
-# position even though its 0/1 endpoints are correct. Only one lever was physically
-# measured; applied to all three since they're the same part.
-LEVER_CALIBRATION = [
-    (0.0, 0.99),
-    (0.1, 0.967),
-    (0.2, 0.94),
-    (0.3, 0.894),
-    (0.4, 0.83),
-    (0.5, 0.76),
-    (0.6, 0.66),
-    (0.7, 0.47),
-    (0.8, 0.18),
-    (1.0, 0.0),
-]
-_CALIBRATION_BY_RAW = sorted(LEVER_CALIBRATION, key=lambda point: point[1])
-_CALIBRATION_RAW = [point[1] for point in _CALIBRATION_BY_RAW]
-_CALIBRATION_UP_FRACTION = [point[0] for point in _CALIBRATION_BY_RAW]
+LEVER_LENGTH_CM = 10.0
+
+# Quadratic regression fit of raw rel_pos (a plain linear rescaling of ADC voltage)
+# against physical lever position in cm, over the measured calibration data - the
+# pots are logarithmic taper, so raw rel_pos isn't linear in position. Replaces the
+# earlier piecewise-linear lookup table (a per-call loop over the calibration
+# points), which was too slow: this is a single direct calculation instead.
+# raw_rel_pos = _CALIBRATION_A*cm**2 + _CALIBRATION_B*cm + _CALIBRATION_C
+_CALIBRATION_A = -0.0102058
+_CALIBRATION_B = -0.00325828
+_CALIBRATION_C = 0.994828
 
 
-def _linear_interp(x, xp, fp):
-    """Linear interpolation; xp must be sorted ascending. Clamps outside its range."""
-    if x <= xp[0]:
-        return fp[0]
-    if x >= xp[-1]:
-        return fp[-1]
-    for i in range(1, len(xp)):
-        if x <= xp[i]:
-            t = (x - xp[i - 1]) / (xp[i] - xp[i - 1])
-            return fp[i - 1] + t * (fp[i] - fp[i - 1])
-    return fp[-1]
+def _cm_from_raw_rel_pos(raw_rel_pos):
+    """Invert the quadratic above to recover physical position (cm) from a raw
+    reading. Its vertex sits left of the lever's 0-10cm range, so the curve is
+    monotonic there and single-valued; clamps to the lever's physical length.
+    """
+    a, b, c = _CALIBRATION_A, _CALIBRATION_B, _CALIBRATION_C
+    discriminant = max(b * b - 4 * a * (c - raw_rel_pos), 0.0)
+    cm = (-b - math.sqrt(discriminant)) / (2 * a)
+    return min(max(cm, 0.0), LEVER_LENGTH_CM)
 
 
 class ControlRodLever:
@@ -64,8 +54,8 @@ class ControlRodLever:
         raw = min(max(raw, 0.0), 1.0)
 
         # Correct the raw (linear-in-voltage, not linear-in-position) reading
-        # against the measured calibration table.
-        up_fraction = _linear_interp(raw, _CALIBRATION_RAW, _CALIBRATION_UP_FRACTION)
+        # against the quadratic calibration fit.
+        up_fraction = _cm_from_raw_rel_pos(raw) / LEVER_LENGTH_CM
 
         # Preserve the existing convention - game_new.py computes
         # up_fraction = 1 - rel_pos, so nothing downstream needs to change.
