@@ -511,6 +511,7 @@ class System:
             self.panel_states.update_state()
             self._update_leds(self.scramming, at_target)
             lever_rel_pos = list(self.panel_states.control_rod_lever_rel_pos.values())
+            print(f"Lever positions: {lever_rel_pos}, Buttons: {self.panel_states.button_states}, Switches: {self.panel_states.switch_states}")
 
             ##!! To start the game: check if both buttons are pressed and all switches are on
             if self.panel_states.button_states["left_button"] and self.panel_states.button_states["right_button"]:
