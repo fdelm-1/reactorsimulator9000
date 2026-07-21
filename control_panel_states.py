@@ -1,9 +1,12 @@
 import sys
+from collections import deque
 from gpiozero import MCP3008
 import RPi.GPIO as GPIO
 import smbus
 from time import sleep
 from itertools import chain
+
+LEVER_SMOOTHING_WINDOW = 8  # reported rel_pos is the average of this many readings
 
 # Measured (physical position as a fraction of the lever's travel, raw linear
 # rel_pos) calibration points for a 10cm lever - these pots are logarithmic taper,
@@ -46,6 +49,7 @@ class ControlRodLever:
         self.min_V = min_V
         self.max_V = max_V
         self.rel_pos = 0.0
+        self._recent_rel_pos = deque(maxlen=LEVER_SMOOTHING_WINDOW)
 
         self.clock_pin = clock_pin
         self.mosi_pin = mosi_pin
@@ -65,7 +69,13 @@ class ControlRodLever:
 
         # Preserve the existing convention - game_new.py computes
         # up_fraction = 1 - rel_pos, so nothing downstream needs to change.
-        self.rel_pos = 1.0 - up_fraction
+        current_rel_pos = 1.0 - up_fraction
+
+        # Smooth out reading jitter: report the average of the last
+        # LEVER_SMOOTHING_WINDOW readings rather than the latest one alone. Ramps up
+        # from fewer readings while the buffer is still filling (e.g. on startup).
+        self._recent_rel_pos.append(current_rel_pos)
+        self.rel_pos = sum(self._recent_rel_pos) / len(self._recent_rel_pos)
         return self.rel_pos
 
 
