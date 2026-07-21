@@ -271,20 +271,6 @@ class System:
     def _time_elapsed_str(seconds_elapsed):
         return f"Time played = {seconds_elapsed:.2f} s"
 
-    @staticmethod
-    def _print_welcome_message():
-        print(
-            "Welcome to Reactor Simulator 9000:\n\n"
-            "Your mission, should you choose to accept it, is to keep the reactor stable "
-            "for 5 seconds at a power of 200 MW.\n"
-            "You are allowed 8 MW above or below this target.\n"
-            "The reactor will melt-down if it is taken above 250 MW!\n\n"
-            "You can control the reactor by pressing 'w' or 'up' to raise the control rods, "
-            "and 's' or 'down' to lower them.\n"
-            "Press 'space' to SCRAM the reactor to slam the control rods down to stop an "
-            "accidental melt-down!\n\n"
-            "Hold then release 'enter' to start the simulation."
-        )
 
     # -- Per-frame rendering ----------------------------------------------
 
@@ -509,7 +495,6 @@ class System:
         self._init_display()
         if self.pk_n_animation:
             self._init_graph()
-        self._print_welcome_message()
         return self._game_loop()
 
     def _game_loop(self):
@@ -535,8 +520,7 @@ class System:
             self.panel_states.update_state()
             self._update_leds(self.scramming, at_target)
             lever_rel_pos = list(self.panel_states.control_rod_lever_rel_pos.values())
-            print(lever_rel_pos[0]-diff)
-            diff = lever_rel_pos[0]
+
 
             with open(TIME_CHECK_PATH, "a") as time_check:
                 time_writer = csv.writer(time_check)
@@ -590,7 +574,6 @@ class System:
                         if show_quit_popup:
                             ##!! RESTART
                             restart_flag = True
-                            print("Restarting the game...")
                             self.running = False
                             pygame_running = False
                         else:
@@ -627,11 +610,6 @@ class System:
                     self.scramming = True
 
                 elif self.time_at_target_condition >= self.TARGET_HOLD_TIME_S:
-                    print("Congratulations! You have successfully and safely kept the reactor "
-                          "stable for 20 seconds at 200 MW!")
-                    print("You have helped to keep the country's lights on!")
-                    print("Press 'q' or 'escape' to quit.")
-                    
                     self._end_game()
                     victory_flag = True
                     if self.pk_n_animation:
@@ -687,7 +665,6 @@ class System:
         return False
 
     def run_pk(self, thread_num):
-        print(f"Thread {thread_num} is running the point kinetics.")
 
         while self.running:
             t_start = time.monotonic()
@@ -702,7 +679,3 @@ if __name__ == "__main__":
     while keep_playing:
         system = System(pk_n_animation=True)
         keep_playing = system.main()
-        if keep_playing:
-            print("Restarting the game...")
-        else:
-            print("Thanks for playing!")
