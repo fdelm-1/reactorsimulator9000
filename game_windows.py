@@ -11,6 +11,7 @@ the same ineterface without touching any hardware.
 from game_new import System
 
 
+
 class KeyboardControlPanelStates:
     """Stand-in for MyControlPanelStaetes when no physical control panel is attached."""
 
