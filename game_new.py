@@ -69,17 +69,18 @@ class System:
     MIN_ALLOWABLE_K_EFF = 0.975
     MAX_ALLOWABLE_BETA_FRACTION = 0.95
 
-    # Deadzone (neutral) band is centred a third of the way up each lever's travel,
-    # same total width as before, just recentred.
+    # Each lever's neutral point (where it contributes exactly 1.0 to k_eff) is a
+    # third of the way up its travel. LEVER_DEADZONE_RANGE is purely cosmetic (LED
+    # colour) - see update_pygame_keff_from_levers, which is linear with no deadzone.
     LEVER_MEDIAN_REL_POS = 1 / 3
     LEVER_DEADZONE_HALF_WIDTH = 0.0535
     LEVER_DEADZONE_RANGE = [(LEVER_MEDIAN_REL_POS - LEVER_DEADZONE_HALF_WIDTH,
                              LEVER_MEDIAN_REL_POS + LEVER_DEADZONE_HALF_WIDTH)] * 3
 
-    # k_eff reached when a given lever is pushed to the bottom/top of its travel while
-    # the other two levers sit at their median (deadzone centre). Left, middle, right.
-    # Overall combined range (all three levers pushed the same way at once) is
-    # roughly 0.965 to 1.07.
+    # k_eff contributed by a given lever at rel_pos=1 / rel_pos=0 (left, middle,
+    # right). Each is linear in between and passes through 1.0 at LEVER_MEDIAN_REL_POS,
+    # so k_eff is exactly 1.07 when all three are simultaneously at maximum, 0.965
+    # when all three are at minimum, and 1.0 when all three are at their median.
     LEVER_MAX_K_EFF = [1.04, 1.02, 1.01]
     LEVER_MIN_K_EFF = [0.98, 0.99, 0.995]
 
@@ -125,25 +126,30 @@ class System:
         self.pk_thread.start()
 
     def update_pygame_keff_from_levers(self, lever_current_rel_pos, lever_origin_rel_pos=(0.75, 0.75, 0.75)):
-        """Nudge k_eff based on how far each lever sits outside its central deadzone."""
+        """Each lever contributes linearly across its full travel (LEVER_MIN_K_EFF at
+        rel_pos=0 to LEVER_MAX_K_EFF at rel_pos=1), with no flat/dead band - the
+        physical lever is a plain slider potentiometer, so its software response
+        should track it continuously rather than pinning to 1.0 near the median.
+        Since every lever passes through 1.0 exactly at LEVER_MEDIAN_REL_POS, k_eff
+        is 1.0 when all three sit at their median, and 1.07 only when all three are
+        simultaneously pushed to their maximum (0.965 when all three are at minimum).
+        """
         temp_k_eff = 1.0
 
         for i, rel_pos in enumerate(lever_current_rel_pos):
-            low, high = self.LEVER_DEADZONE_RANGE[i]
+            min_k_eff, max_k_eff = self.LEVER_MIN_K_EFF[i], self.LEVER_MAX_K_EFF[i]
+            lever_k_eff = min_k_eff + (max_k_eff - min_k_eff) * rel_pos
+            temp_k_eff += lever_k_eff - 1.0
 
-            if low < rel_pos < high:
-                ##!! IN DEADZONE - do not update k_eff
-                self.lever_deadzone_states[i] = 0
-            elif rel_pos < low:
-                ##!! BELOW LOW DEADZONE - increase k_eff towards LEVER_MAX_K_EFF[i]
+            # Deadzone band is purely a display concern here (LED colour in
+            # _update_leds) - it plays no part in the k_eff calculation above.
+            low, high = self.LEVER_DEADZONE_RANGE[i]
+            if rel_pos < low:
                 self.lever_deadzone_states[i] = -1
-                diff = low - rel_pos
-                temp_k_eff += (self.LEVER_MAX_K_EFF[i] - 1.0) * diff / low
-            else:
-                ##!! ABOVE HIGH DEADZONE - decrease k_eff towards LEVER_MIN_K_EFF[i]
+            elif rel_pos > high:
                 self.lever_deadzone_states[i] = 1
-                diff = rel_pos - high
-                temp_k_eff -= (1.0 - self.LEVER_MIN_K_EFF[i]) * diff / (1 - high)
+            else:
+                self.lever_deadzone_states[i] = 0
 
         self.pygame_k_eff = temp_k_eff
 
