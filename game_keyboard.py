@@ -16,9 +16,9 @@ class KeyboardControlPanelStates:
     """Stand-in for MyControlPanelStaetes when no physical control panel is attached."""
 
     def __init__(self):
-        # Held inside the lever deadzone (0.763-0.87) so the "levers" read as
-        # neutral and only the keyboard rod controls affect k_eff. Key names
-        # match MyControlPanelStates.control_rod_lever_rel_pos.
+        # Arbitrary fixed reading - only matters if USE_LEVERS_BY_DEFAULT is toggled
+        # on via '8', since otherwise only the keyboard rod controls affect k_eff.
+        # Key names match MyControlPanelStates.control_rod_lever_rel_pos.
         self.control_rod_lever_rel_pos = {"left_lever": 0.8, "mid_lever": 0.8, "right_lever": 0.8}
         self.button_states = {"left_button": False, "right_button": False}
         self.switch_states = {"switch": False}
@@ -34,8 +34,8 @@ class KeyboardControlPanelStates:
 class WindowsSystem(System):
     # No physical lever to read, so drive k_eff from the w/s keyboard increments
     # instead of update_pygame_keff_from_levers() (which would just read the stub's
-    # fixed neutral position and reset k_eff to 1.0 every frame). Still togglable
-    # in-game with '8' if you want to see the (static) lever behavior.
+    # fixed position every frame). Still togglable in-game with '8' if you want to
+    # see the (static) lever behavior.
     USE_LEVERS_BY_DEFAULT = False
 
     def _create_panel_states(self):
