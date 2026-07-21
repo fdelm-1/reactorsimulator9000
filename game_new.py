@@ -75,7 +75,7 @@ class System:
     Y_AXIS_MAX_MW = 300
 
     # k_eff with all levers fully up (neutral - no lever contributes anything).
-    BASE_K_EFF = 1.0095
+    BASE_K_EFF = 1.0089
 
     # How much each lever (left, middle, right) subtracts from BASE_K_EFF when pushed
     # all the way down; 0 when pushed all the way up (no effect at maximum), linear
