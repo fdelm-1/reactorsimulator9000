@@ -74,10 +74,10 @@ class System:
     Y_AXIS_MIN_MW = 0
     Y_AXIS_MAX_MW = 300
 
-    MIN_ALLOWABLE_K_EFF = 0.975
+    MIN_ALLOWABLE_K_EFF = 0.995
 
     # k_eff with all levers fully up (neutral - no lever contributes anything).
-    BASE_K_EFF = 1.009
+    BASE_K_EFF = 1.0095
 
     # How much each lever (left, middle, right) subtracts from BASE_K_EFF when pushed
     # all the way down; 0 when pushed all the way up (no effect at maximum), linear
