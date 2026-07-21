@@ -67,22 +67,24 @@ class System:
     Y_AXIS_MAX_MW = 300
 
     MIN_ALLOWABLE_K_EFF = 0.975
-    MAX_ALLOWABLE_BETA_FRACTION = 0.95
 
-    # Each lever's neutral point (where it contributes exactly 1.0 to k_eff) is a
-    # third of the way up its travel. LEVER_DEADZONE_RANGE is purely cosmetic (LED
-    # colour) - see update_pygame_keff_from_levers, which is linear with no deadzone.
-    LEVER_MEDIAN_REL_POS = 1 / 3
+    # k_eff contributed by a given lever when it's pushed all the way up / all the way
+    # down (left, middle, right). Each is linear in between and passes through 1.0 a
+    # third of the way up, so k_eff is exactly LEVER_COMBINED_MAX_K_EFF (1.07) when all
+    # three are simultaneously all the way up, 0.965 when all three are all the way
+    # down, and 1.0 when all three are a third of the way up.
+    LEVER_MAX_K_EFF = [1.04, 1.02, 1.01]
+    LEVER_MIN_K_EFF = [0.98, 0.99, 0.995]
+    LEVER_COMBINED_MAX_K_EFF = 1.0 + sum(m - 1.0 for m in LEVER_MAX_K_EFF)
+
+    LEVER_UP_MEDIAN_FRACTION = 1 / 3
+
+    # This control panel's levers report a *higher* rel_pos the further DOWN they're
+    # pushed, so "a third of the way up" is rel_pos = 1 - 1/3, not 1/3.
+    LEVER_MEDIAN_REL_POS = 1 - LEVER_UP_MEDIAN_FRACTION
     LEVER_DEADZONE_HALF_WIDTH = 0.0535
     LEVER_DEADZONE_RANGE = [(LEVER_MEDIAN_REL_POS - LEVER_DEADZONE_HALF_WIDTH,
                              LEVER_MEDIAN_REL_POS + LEVER_DEADZONE_HALF_WIDTH)] * 3
-
-    # k_eff contributed by a given lever at rel_pos=1 / rel_pos=0 (left, middle,
-    # right). Each is linear in between and passes through 1.0 at LEVER_MEDIAN_REL_POS,
-    # so k_eff is exactly 1.07 when all three are simultaneously at maximum, 0.965
-    # when all three are at minimum, and 1.0 when all three are at their median.
-    LEVER_MAX_K_EFF = [1.04, 1.02, 1.01]
-    LEVER_MIN_K_EFF = [0.98, 0.99, 0.995]
 
     # Whether the control-rod levers drive k_eff by default ('8' toggles this in-game).
     # update_pygame_keff_from_levers() sets k_eff purely from the current lever position,
@@ -126,19 +128,22 @@ class System:
         self.pk_thread.start()
 
     def update_pygame_keff_from_levers(self, lever_current_rel_pos, lever_origin_rel_pos=(0.75, 0.75, 0.75)):
-        """Each lever contributes linearly across its full travel (LEVER_MIN_K_EFF at
-        rel_pos=0 to LEVER_MAX_K_EFF at rel_pos=1), with no flat/dead band - the
+        """Each lever contributes linearly across its full travel (LEVER_MIN_K_EFF all
+        the way down to LEVER_MAX_K_EFF all the way up), with no flat/dead band - the
         physical lever is a plain slider potentiometer, so its software response
         should track it continuously rather than pinning to 1.0 near the median.
-        Since every lever passes through 1.0 exactly at LEVER_MEDIAN_REL_POS, k_eff
-        is 1.0 when all three sit at their median, and 1.07 only when all three are
-        simultaneously pushed to their maximum (0.965 when all three are at minimum).
+        Since every lever passes through 1.0 exactly a third of the way up, k_eff is
+        1.0 when all three sit there, and LEVER_COMBINED_MAX_K_EFF (1.07) only when
+        all three are simultaneously pushed all the way up (0.965 all the way down).
         """
         temp_k_eff = 1.0
 
         for i, rel_pos in enumerate(lever_current_rel_pos):
+            # This hardware reports a higher rel_pos the further DOWN the lever is
+            # pushed, so convert to "how far up" before applying the linear response.
+            up_fraction = 1.0 - rel_pos
             min_k_eff, max_k_eff = self.LEVER_MIN_K_EFF[i], self.LEVER_MAX_K_EFF[i]
-            lever_k_eff = min_k_eff + (max_k_eff - min_k_eff) * rel_pos
+            lever_k_eff = min_k_eff + (max_k_eff - min_k_eff) * up_fraction
             temp_k_eff += lever_k_eff - 1.0
 
             # Deadzone band is purely a display concern here (LED colour in
@@ -173,7 +178,10 @@ class System:
         self.lowering_rod = False
         self.scramming = False
 
-        self.max_allowable_k_eff = 1 + (self.pk.beta * self.MAX_ALLOWABLE_BETA_FRACTION)
+        # Was 1 + pk.beta*0.95 (~1.006) - far below what the levers can actually reach
+        # (1.07), so pygame_k_eff was silently clamped well short of it every frame and
+        # "MAXIMUM!" could never display. Tie it to the levers' real combined ceiling.
+        self.max_allowable_k_eff = self.LEVER_COMBINED_MAX_K_EFF
 
         self.running = False
         self.time_at_target_condition = 0.0
