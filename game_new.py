@@ -82,7 +82,7 @@ class System:
     # in between. Levers only ever pull k_eff down from the base, never push it above.
     LEVER_MIN_EFFECT = [-0.01, -0.003, -0.001]
 
-    MIN_ALLOWABLE_K_EFF = BASE_K_EFF - sum(m for m in LEVER_MIN_EFFECT)
+    MIN_ALLOWABLE_K_EFF = BASE_K_EFF + sum(m for m in LEVER_MIN_EFFECT)
 
     # Yellow LED window: a lever's own k_eff contribution counts as "neutral" (not
     # positive/negative) within +-0.0005 of 1.0, rather than requiring it to land on
