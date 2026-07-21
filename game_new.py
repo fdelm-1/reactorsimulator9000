@@ -626,7 +626,8 @@ class System:
                     if self.pk_n_animation:
                         self._draw_final_graph()
                     name = self._prompt_for_name()
-                    self._record_score(name)
+                    if name != "Anonymous":
+                        self._record_score(name)
                     # Replace the (now stale) name-entry popup with the existing
                     # quit/restart instructions rather than leaving it on screen.
                     self._draw_popup(quit_restart_message)
