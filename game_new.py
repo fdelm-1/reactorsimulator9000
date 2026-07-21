@@ -40,6 +40,7 @@ TIME_CHECK_PATH = "lever_time_check.csv"
 # block the game view.
 POPUP_WIDTH, POPUP_HEIGHT = 800, 170
 POPUP_TOP_MARGIN = 20
+diff = [0,0,0]
 
 
 class System:
@@ -534,7 +535,13 @@ class System:
             self.panel_states.update_state()
             self._update_leds(self.scramming, at_target)
             lever_rel_pos = list(self.panel_states.control_rod_lever_rel_pos.values())
-            print(f"Lever positions: {lever_rel_pos}, Buttons: {self.panel_states.button_states}, Switches: {self.panel_states.switch_states}")
+            #print(f"Lever positions: {lever_rel_pos}, Buttons: {self.panel_states.button_states}, Switches: {self.panel_states.switch_states}")
+            print(diff[0]-lever_rel_pos[0], diff[1]-lever_rel_pos[1], diff[2]-lever_rel_pos[2])
+            diff = [lever_rel_pos[0], lever_rel_pos[1], lever_rel_pos[2]]
+
+            with open(TIME_CHECK_PATH, "a") as time_check:
+                time_writer = csv.writer(time_check)
+                time_writer.writerow([f"{time.time():.3f}"])
 
             ##!! To start the game: check if both buttons are pressed and all switches are on
             if self.panel_states.button_states["left_button"] and self.panel_states.button_states["right_button"]:
