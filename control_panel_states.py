@@ -1,8 +1,9 @@
+import sys
 from gpiozero import MCP3008
 import RPi.GPIO as GPIO
 import smbus
 from time import sleep
-from itertools import chain 
+from itertools import chain
 
 class ControlRodLever:
     def __init__(self, channel, min_V=0.1, max_V=1.0, clock_pin=21, mosi_pin=20, miso_pin=19, select_pin=16) -> None:
@@ -29,6 +30,37 @@ class ControlRodLever:
             self.rel_pos = 1.0
 
         return self.rel_pos
+
+
+def calibrate_levers(interval=0.2):
+    """Stream each lever's live rel_pos so it can be read off at known physical
+    positions and used to build a linearisation table.
+
+    Constructs the three ControlRodLever objects directly rather than going through
+    MyControlPanelStates, so it doesn't need the switches/buttons/LED I2C boards
+    wired up or working - just the levers themselves.
+
+    Usage: physically move a lever to a marked position (e.g. every 10% of its
+    travel), note the printed rel_pos for that lever's column, move to the next
+    mark, and repeat - for all three levers, in any order. Ctrl+C to stop, then
+    report the (physical position, rel_pos) pairs for each lever.
+    """
+    levers = {
+        "left_lever": ControlRodLever(2),
+        "mid_lever": ControlRodLever(1),
+        "right_lever": ControlRodLever(0),
+    }
+    print("Move a lever to a marked position and read off its rel_pos below.")
+    print("Press Ctrl+C to stop.\n")
+    try:
+        while True:
+            readings = {name: lever.update_rel_pos() for name, lever in levers.items()}
+            line = "   ".join(f"{name}: {value:.4f}" for name, value in readings.items())
+            print(line, end="\r", flush=True)
+            sleep(interval)
+    except KeyboardInterrupt:
+        print("\nStopped.")
+
 
 class PCA9685Connection:
     def __init__(self, pca_address, MODE1, PRESCALE, LED0_ON_L, bus, frequency=1000):
@@ -280,5 +312,8 @@ class MyControlPanelStates:
 
 
 if __name__ == "__main__":
-    control_panel = MyControlPanelStates()
-    control_panel.state_output_loop()
+    if "calibrate" in sys.argv:
+        calibrate_levers()
+    else:
+        control_panel = MyControlPanelStates()
+        control_panel.state_output_loop()
