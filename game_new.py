@@ -49,8 +49,9 @@ RAW_SCORES_PATH = "raw_scores.csv"
 # The whole diagram is rendered into its own REACTOR_SIZE_PX surface in local
 # coordinates and blitted to the screen at REACTOR_ORIGIN_PX, so every layout
 # number below is relative to that surface's top-left corner.
-REACTOR_ORIGIN_PX = (40, 200)
 REACTOR_SIZE_PX = (480, 880)
+# Bottom-aligned with the graph block: the vessel's base sits level with the graph's.
+REACTOR_ORIGIN_PX = (40, GRAPH_ORIGIN_PX[1] + GRAPH_SIZE_PX[1] - REACTOR_SIZE_PX[1])
 
 # Palette, kept local to the diagram rather than in config (these are purely
 # presentational to this one feature). Fuel is the same green used elsewhere.
@@ -165,6 +166,17 @@ class System:
 
     MIN_ALLOWABLE_K_EFF = BASE_K_EFF + sum(m for m in LEVER_MIN_EFFECT)
 
+    # The last LEVER_DEADZONE_FRACTION of travel at each end of a lever snaps to the
+    # extreme (0 or 1), so a lever nudged almost-but-not-quite to an end still reads as
+    # fully there rather than leaving a sliver of residual effect.
+    LEVER_DEADZONE_FRACTION = 0.05
+
+    # Each lever's effect (on k_eff and on the diagram) chases its target position
+    # rather than snapping, taking this many seconds to cross the full range - so a
+    # lever move plays out gradually, like a real rod drive / boron change. Safety
+    # slowest, shim fastest. See _advance_effective_levers.
+    LEVER_EFFECT_DELAY_S = config.LEVER_EFFECT_DELAY_S
+
     # SCRAM behaviour (manual or automatic - see _trigger_scram). Both immediately
     # multiply the reactor's power by SCRAM_POWER_FACTOR and lock k_eff at
     # MIN_ALLOWABLE_K_EFF; an automatic SCRAM (triggered by exceeding
@@ -248,6 +260,35 @@ class System:
 
         self.pygame_k_eff = temp_k_eff
 
+    @classmethod
+    def _apply_lever_deadzone(cls, pos):
+        """Snap the last LEVER_DEADZONE_FRACTION of travel at each end to 0 / 1."""
+        if pos <= cls.LEVER_DEADZONE_FRACTION:
+            return 0.0
+        if pos >= 1.0 - cls.LEVER_DEADZONE_FRACTION:
+            return 1.0
+        return pos
+
+    def _advance_effective_levers(self, lever_rel_pos, dt):
+        """Move each lever's "effective" position - the one that actually drives k_eff
+        and the diagram - toward its (deadzoned) real position, at a rate that crosses
+        the full 0..1 range in LEVER_EFFECT_DELAY_S[i] seconds. This draws each lever's
+        effect out over time (safety slowest, shim fastest) instead of applying it
+        instantly, simulating the gradual physical response.
+        """
+        for i in range(len(self.effective_lever_pos)):
+            target = self._apply_lever_deadzone(lever_rel_pos[i])
+            delay = self.LEVER_EFFECT_DELAY_S[i]
+            if delay <= 0:
+                self.effective_lever_pos[i] = target
+                continue
+            max_step = dt / delay
+            diff = target - self.effective_lever_pos[i]
+            if abs(diff) <= max_step:
+                self.effective_lever_pos[i] = target
+            else:
+                self.effective_lever_pos[i] += math.copysign(max_step, diff)
+
     def _trigger_scram(self, automatic):
         """SCRAM: immediately cut the reactor's power and lock k_eff at its minimum,
         ignoring lever/rod input, until the lock expires (see the per-frame handling
@@ -289,6 +330,13 @@ class System:
 
         self.running = False
         self.time_at_target_condition = 0.0
+
+        # Seed each lever's effective (drawn-out) position at its current deadzoned
+        # reading so the diagram/k_eff start settled rather than ramping in from 0.
+        self.effective_lever_pos = [
+            self._apply_lever_deadzone(pos)
+            for pos in self.panel_states.control_rod_lever_rel_pos.values()
+        ]
 
     def _init_graph(self):
         self.graph_surface = pygame.Surface(GRAPH_SIZE_PX)
@@ -866,6 +914,12 @@ class System:
             self._update_leds(self.scramming, at_target)
             lever_rel_pos = list(self.panel_states.control_rod_lever_rel_pos.values())
 
+            # Draw each lever's effect out over time (and apply the end deadzones):
+            # effective_lever_pos lags the real levers and is what actually drives
+            # k_eff and the rod/shim diagram. clock.get_time() is the previous frame's
+            # real duration in ms (see the time_at_target comment further down).
+            self._advance_effective_levers(lever_rel_pos, self.clock.get_time() / 1000.0)
+
             ##!! To start the game: check if both buttons are pressed and all switches are on
             if self.panel_states.button_states["left_button"] and self.panel_states.button_states["right_button"]:
                 if all(self.panel_states.switch_states.values()):
@@ -963,9 +1017,9 @@ class System:
                     # quit/restart instructions rather than leaving it on screen.
                     self._draw_popup(quit_restart_message)
 
-                ##!! Update the k_eff value based on lever_rel_pos
+                ##!! Update the k_eff value from the levers' effective (drawn-out) positions
                 if not self.scramming and use_levers_flag:
-                    self.update_pygame_keff_from_levers(lever_rel_pos, lever_origin_rel_pos)
+                    self.update_pygame_keff_from_levers(self.effective_lever_pos, lever_origin_rel_pos)
 
             if self.running:
                 self.screen.fill((0, 50, 0))
@@ -998,16 +1052,17 @@ class System:
             if self.pk_n_animation:
                 self._draw_leaderboard()
                 # Safety (left lever) and regulating (mid lever) rods track their
-                # levers and are unaffected by a SCRAM. The scram rods sit withdrawn
-                # and only drop - fully, immediately - while a SCRAM lock is active
-                # (self.scramming). The right lever is now chemical shim: it reddens
-                # the coolant rather than moving a rod.
+                # levers' effective (drawn-out) positions and are unaffected by a SCRAM.
+                # The scram rods sit withdrawn and only drop - fully, immediately -
+                # while a SCRAM lock is active (self.scramming). The right lever is now
+                # chemical shim: its effective position reddens the coolant.
+                eff = self.effective_lever_pos
                 rod_insertions = {
-                    "safety": min(max(lever_rel_pos[0], 0.0), 1.0),
-                    "regulating": min(max(lever_rel_pos[1], 0.0), 1.0),
+                    "safety": min(max(eff[0], 0.0), 1.0),
+                    "regulating": min(max(eff[1], 0.0), 1.0),
                     "scram": 1.0 if self.scramming else 0.0,
                 }
-                shim_fraction = min(max(lever_rel_pos[2], 0.0), 1.0)
+                shim_fraction = min(max(eff[2], 0.0), 1.0)
                 power_fraction = min(max(self.pk.n / self.FAILURE_POWER_MW, 0.0), 1.0)
                 self._draw_reactor_vessel(rod_insertions, power_fraction, shim_fraction)
 

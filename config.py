@@ -22,6 +22,12 @@ BASE_K_EFF = 1.0089
 # pushed all the way down, scaling linearly to no effect at all the way up.
 LEVER_MIN_EFFECT = [-0.01, -0.003, -0.001]
 
+# Time (seconds) over which each lever's full-travel movement is drawn out before
+# its full effect is reached, simulating the gradual physical response (control-rod
+# drive speed / chemical-shim mixing). Order is [safety (left), regulating (mid),
+# shim (right)] - the safety rods are slowest, the chemical shim the fastest.
+LEVER_EFFECT_DELAY_S = [2.5, 1.2, 0.5]
+
 # -- SCRAM --------------------------------------------------------------
 
 # A SCRAM (manual or automatic) immediately multiplies the reactor's power
