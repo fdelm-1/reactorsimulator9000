@@ -66,7 +66,7 @@ class System:
     TARGET_POWER_TOLERANCE_MW = config.TARGET_TOLERANCE_MW
     TARGET_POWER_LOWER_MW = TARGET_POWER_MW - TARGET_POWER_TOLERANCE_MW
     TARGET_POWER_UPPER_MW = TARGET_POWER_MW + TARGET_POWER_TOLERANCE_MW
-    TARGET_HOLD_TIME_S = 5.0
+    TARGET_HOLD_TIME_S = config.TARGET_HOLD_TIME_S
     FAILURE_POWER_MW = config.FAILURE_POWER_MW
     FAILURE_ZONE_TOP_MW = 500  # how far up the graph's red danger band is drawn
     # displayed/plotted power never reads below this - just enough to avoid a literal
