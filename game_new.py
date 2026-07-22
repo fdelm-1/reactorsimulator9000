@@ -38,7 +38,7 @@ Y_GRID_STEP_MW = 50
 
 LEADERBOARD_ORIGIN_PX = (GRAPH_ORIGIN_PX[0] + GRAPH_SIZE_PX[0] + 20, GRAPH_ORIGIN_PX[1])
 LEADERBOARD_SIZE_PX = (WIDTH - LEADERBOARD_ORIGIN_PX[0], GRAPH_SIZE_PX[1])
-LEADERBOARD_MAX_ENTRIES = 10
+LEADERBOARD_MAX_ENTRIES = 20
 RAW_SCORES_PATH = "raw_scores.csv"
 
 # Popups (name entry, quit/restart instructions) live in the strip above the graph
