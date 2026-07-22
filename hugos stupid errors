@@ -4,9 +4,9 @@ Errors found:
 
 **2. `wetted_perimeter` units** — it's a length (cm → m), so the factor should be `10**-2`, not `10**-4`. Should be `math.pi * 1.08 * 1e-2`.
 
-**3. `FUEL_ROD_HEAT_TRANSFER_AREA`** — the image has `π × (5.4×10⁻³) × 6` (circumference × length, with the "2" being a struck-through/corrected digit). Code squares the diameter, giving an area of ~5.5e-4 m² instead of ~0.102 m². Should be `math.pi * 5.4e-3 * 6`. Also note 5.4e-3 m is the *diameter* (1.08 cm dia → 0.54 cm radius), so the circumference is π·d — that part is consistent.
+**3. `FUEL_ROD_HEAT_TRANSFER_AREA`** — the image has `π × (5.4×10⁻³) × 6` (circumference × length, with the "2" being a struck-through/corrected digit). Code squares the diameter, giving an area of ~5.5e-4 m² instead of ~0.102 m². Should be `math.pi * 5.4e-3 * 6`. Also note 5.4e-3 m is the *diameter* (1.08 cm dia → 0.54 cm radius), so the circumference is π·r radius². For UO₂ at 10400 kg/m³: `10400 * math.pi * (0.54e-2)**2 * 6` ≈ 9.5 kg.d — that part is consistent.
 
-**4. `FUEL_ROD_MASS`** — not in the image, but dimensionally wrong as written: `10.4 * π * 1.08**2 * 6000` mixes cm² with mm(?) length and omits the ÷4 for radius². For UO₂ at 10400 kg/m³: `10400 * math.pi * (0.54e-2)**2 * 6` ≈ 9.5 kg.
+**4. `FUEL_ROD_MASS`** — not in the image, but dimensionally wrong as written: `10.4 * π * 1.08**2 * 6000` mixes cm² with mm(?) length and omits the ÷4 fo
 
 **5. Missing parentheses in the return** — the game-power term isn't divided by `m·c_p`. Should be:
 

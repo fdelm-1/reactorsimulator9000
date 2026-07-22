@@ -4,12 +4,12 @@ import time
 class TemperatureModel:
 
     hydraulic_area = (1.26**2 - math.pi * (0.54**2)) * (10**-4) #in m^2
-    wetted_perimeter = math.pi * 1.08 * (10**-4) #in m
+    wetted_perimeter = math.pi * 1.08 * (10**-2) #in m
     number_of_rods = 52*17*17
 
     #constants
 
-    FUEL_ROD_MASS = 10.4 * math.pi * (0.0108**2) * 6000
+    FUEL_ROD_MASS = 10400 * math.pi * (0.0054**2) * 6
     FUEL_SPECIFIC_HEAT_CAPACITY = 300
     FUEL_ROD_HEAT_TRANSFER_AREA = 6 * math.pi * (5.4 * 10**-3) ** 2
     THERMAL_CONDUCTIVITY = 0.598 #of coolant
@@ -35,7 +35,7 @@ class TemperatureModel:
         return (flow_viscosity * specific_heat_capacity) / thermal_conductivity
     
     def _heat_transfer_coefficient(self, flow_reynolds_number, prandtl_number, thermal_conductivity, hydraulic_diameter):
-        return (0.023 * (flow_reynolds_number ** 0.8) * (prandtl_number ** 0.3) * thermal_conductivity) / hydraulic_diameter
+        return (0.023 * (flow_reynolds_number ** 0.8) * (prandtl_number ** 0.4) * thermal_conductivity) / hydraulic_diameter
     
     def _rod_heat_flux(self, heat_transfer_coefficient, fuel_temperature, flow_temperature):
         return heat_transfer_coefficient * (fuel_temperature - flow_temperature)
@@ -48,7 +48,7 @@ class TemperatureModel:
         heat_transfer_coefficient = self._heat_transfer_coefficient(flow_reynolds_number, self.PRANDTL_NUMBER, self.THERMAL_CONDUCTIVITY, hydraulic_diameter)
         rod_heat_flux = self._rod_heat_flux(heat_transfer_coefficient, fuel_temperature, self.FLOW_TEMPERATURE)
 
-        return(game_power/self.number_of_rods - (self.FUEL_ROD_HEAT_TRANSFER_AREA * rod_heat_flux) / (self.FUEL_ROD_MASS * self.FUEL_SPECIFIC_HEAT_CAPACITY))
+        return((game_power/self.number_of_rods - (self.FUEL_ROD_HEAT_TRANSFER_AREA * rod_heat_flux)) / (self.FUEL_ROD_MASS * self.FUEL_SPECIFIC_HEAT_CAPACITY))
         
         
         
