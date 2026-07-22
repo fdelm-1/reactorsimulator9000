@@ -1,5 +1,8 @@
 # -- GAME DESIGN ---------------------------------------------------------
 
+import math
+
+
 WHITE = (255,255,255)
 BLACK = (0,0,0)
 GREEN = (116,228,124)
@@ -43,3 +46,10 @@ SCRAM_LOCK_DURATION_S = 2.0
 SCRAM_AUTO_LOCK_MULTIPLIER = 2
 
 # -- TEMP CONTROL ------------------------------------------------------
+
+ROD_DIAMETER = 0.0108
+ROD_LENGTH = 6
+NUMBER_OF_RODS = 52*17*17
+FUEL_ROD_MASS = 10400 * math.pi * ((ROD_DIAMETER/2)**2) * 6
+FUEL_SPECIFIC_HEAT_CAPACITY = 300
+FUEL_ROD_HEAT_TRANSFER_AREA = 6 * math.pi * ((ROD_DIAMETER/2) ** 2)

@@ -1,18 +1,21 @@
 import math
 import time
+import config
 
 class TemperatureModel:
 
-    rod_diameter = 0.0108
-    rod_length = 6
+    rod_diameter = config.ROD_DIAMETER
+    rod_length = config.ROD_LENGTH
     hydraulic_area = (1.26**2 - math.pi * ((rod_diameter/2)**2)) #in m^2
     wetted_perimeter = math.pi * rod_diameter #in m
-    number_of_rods = 52*17*17
+    number_of_rods = config.NUMBER_OF_RODS
 
     #constants
 
-    FUEL_ROD_MASS = 10400 * math.pi * ((rod_diameter/2)**2) * 6
-    FUEL_SPECIFIC_HEAT_CAPACITY = 300
+    FUEL_ROD_MASS = config.FUEL_ROD_MASS
+    FUEL_SPECIFIC_HEAT_CAPACITY = config.FUEL_SPECIFIC_HEAT_CAPACITY
+    FUEL_ROD_HEAT_TRANSFER_AREA = config.FUEL_ROD_HEAT_TRANSFER_AREA
+    
     FUEL_ROD_HEAT_TRANSFER_AREA = 6 * math.pi * ((rod_diameter/2) ** 2)
     THERMAL_CONDUCTIVITY = 0.598 #of coolant
     FLOW_VISCOSITY = 8.833 * 10**-5 #of coolant
