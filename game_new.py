@@ -34,7 +34,9 @@ GRAPH_MARGIN_BOTTOM = 50
 GRAPH_BORDER_WIDTH = 2
 GRAPH_LINE_WIDTH = 4
 TARGET_ZONE_ALPHA = 130
-WARNING_ZONE_ALPHA = 130
+WARNING_ZONE_ALPHA = 200
+WARNING_ZONE_HATCH_SPACING_PX = 20
+WARNING_ZONE_HATCH_WIDTH_PX = 4
 FAILURE_ZONE_ALPHA = 130
 Y_GRID_STEP_MW = 50
 
@@ -261,6 +263,30 @@ class System:
         band.fill((*color_rgb, alpha))
         surface.blit(band, (plot_rect.left, y_top))
 
+    def _draw_hatched_band(self, surface, mw_low, mw_high, color_rgb, alpha,
+                            spacing=WARNING_ZONE_HATCH_SPACING_PX, line_width=WARNING_ZONE_HATCH_WIDTH_PX):
+        """Same region as _draw_translucent_band, but filled with diagonal "\" stripes
+        instead of a solid colour, so it reads as a hazard-stripe warning rather than
+        a plain block.
+        """
+        plot_rect = self.graph_plot_rect
+        y_top = max(self._mw_to_px(mw_high), plot_rect.top)
+        y_bottom = min(self._mw_to_px(mw_low), plot_rect.bottom)
+        if y_bottom <= y_top:
+            return
+        width, height = plot_rect.width, y_bottom - y_top
+        band = pygame.Surface((width, height), pygame.SRCALPHA)
+        color = (*color_rgb, alpha)
+        # Lines run top-left to bottom-right ("\"); starting the sweep a full
+        # height to the left of the surface (and continuing to its right edge)
+        # ensures stripes still reach the surface's left/bottom corner instead of
+        # leaving it blank.
+        x = -height
+        while x < width:
+            pygame.draw.line(band, color, (x, 0), (x + height, height), line_width)
+            x += spacing
+        surface.blit(band, (plot_rect.left, y_top))
+
     def _rebuild_graph_static_background(self):
         """Everything that never changes while the graph is up: the y-axis never
         rescales, and the target/failure bands are fixed MW ranges, so all of this
@@ -272,8 +298,8 @@ class System:
 
         self._draw_translucent_band(bg, self.TARGET_POWER_LOWER_MW, self.TARGET_POWER_UPPER_MW,
                                      GREEN, TARGET_ZONE_ALPHA)
-        self._draw_translucent_band(bg, self.TARGET_POWER_UPPER_MW, self.FAILURE_POWER_MW,
-                                     AMBER, WARNING_ZONE_ALPHA)
+        self._draw_hatched_band(bg, self.TARGET_POWER_UPPER_MW, self.FAILURE_POWER_MW,
+                                 AMBER, WARNING_ZONE_ALPHA)
         self._draw_translucent_band(bg, self.FAILURE_POWER_MW,
                                      min(self.FAILURE_ZONE_TOP_MW, self.Y_AXIS_MAX_MW),
                                      RED, FAILURE_ZONE_ALPHA)
