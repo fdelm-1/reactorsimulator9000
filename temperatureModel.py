@@ -3,18 +3,20 @@ import time
 
 class TemperatureModel:
 
-    hydraulic_area = (1.26**2 - math.pi * (0.54**2)) * (10**-4) #in m^2
-    wetted_perimeter = math.pi * 1.08 * (10**-2) #in m
+    rod_diameter = 0.0108
+    rod_length = 6
+    hydraulic_area = (1.26**2 - math.pi * ((rod_diameter/2)**2)) #in m^2
+    wetted_perimeter = math.pi * rod_diameter #in m
     number_of_rods = 52*17*17
 
     #constants
 
-    FUEL_ROD_MASS = 10400 * math.pi * (0.0054**2) * 6
+    FUEL_ROD_MASS = 10400 * math.pi * ((rod_diameter/2)**2) * 6
     FUEL_SPECIFIC_HEAT_CAPACITY = 300
-    FUEL_ROD_HEAT_TRANSFER_AREA = 6 * math.pi * (5.4 * 10**-3) ** 2
+    FUEL_ROD_HEAT_TRANSFER_AREA = 6 * math.pi * ((rod_diameter/2) ** 2)
     THERMAL_CONDUCTIVITY = 0.598 #of coolant
     FLOW_VISCOSITY = 8.833 * 10**-5 #of coolant
-    FLOW_DENSITY = 727.9 #of coolant (CHECK THIS VALUE)
+    FLOW_DENSITY = 727.9 #of coolant 
     FLOW_TEMPERATURE = 300 #of coolant 
 
     PRANDTL_NUMBER = (FLOW_VISCOSITY * FUEL_SPECIFIC_HEAT_CAPACITY) / THERMAL_CONDUCTIVITY
@@ -50,19 +52,6 @@ class TemperatureModel:
 
         return((game_power/self.number_of_rods - (self.FUEL_ROD_HEAT_TRANSFER_AREA * rod_heat_flux)) / (self.FUEL_ROD_MASS * self.FUEL_SPECIFIC_HEAT_CAPACITY))
         
-        
-        
-        
-        
-        
-        
-        #hydraulic_diameter = self._hydraulic_diameter(self.hydraulic_area, self.wetted_perimeter)
-        #free_stream_velocity = self._flow_free_stream_velocity(mass_flow_rate, flow_density, self.hydraulic_area)
-        #flow_reynolds_number = self._flow_reynolds_number(flow_density, free_stream_velocity, hydraulic_diameter, self.FLOW_VISCOSITY)
-        #heat_transfer_coefficient = self._heat_transfer_coefficient(flow_reynolds_number, prandtl_number, self.THERMAL_CONDUCTIVITY, hydraulic_diameter)
-        #rod_heat_flux = self._rod_heat_flux(heat_transfer_coefficient, fuel_temperature, flow_temperature)
-        
-        #return (game_power - (rod_heat_flux * self.FUEL_ROD_SURFACE_AREA * self.number_of_rods)) / (self.FUEL_ROD_MASS * self.FLUE_SPECIFIC_HEAT_CAPACITY)
 
 if __name__ == "__main__":
     model = TemperatureModel()
