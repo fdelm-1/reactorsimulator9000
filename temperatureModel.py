@@ -48,7 +48,7 @@ class TemperatureModel:
         heat_transfer_coefficient = self._heat_transfer_coefficient(flow_reynolds_number, self.PRANDTL_NUMBER, self.THERMAL_CONDUCTIVITY, hydraulic_diameter)
         rod_heat_flux = self._rod_heat_flux(heat_transfer_coefficient, fuel_temperature, self.FLOW_TEMPERATURE)
 
-        return(game_power - (self.FUEL_ROD_HEAT_TRANSFER_AREA * rod_heat_flux) / (self.FUEL_ROD_MASS * self.FLUE_SPECIFIC_HEAT_CAPACITY))
+        return(game_power/self.number_of_rods - (self.FUEL_ROD_HEAT_TRANSFER_AREA * rod_heat_flux) / (self.FUEL_ROD_MASS * self.FLUE_SPECIFIC_HEAT_CAPACITY))
         
         
         
