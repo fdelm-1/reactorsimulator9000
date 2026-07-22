@@ -1,9 +1,3 @@
-"""Tunable gameplay/reactor-balance constants for Reactor Simulator 9000.
-
-Centralised here, instead of scattered through game_new.py's control and
-rendering logic, so game balance can be retuned without hunting through code.
-"""
-
 TARGET_POWER_MW = 200
 TARGET_TOLERANCE_MW = 8
 FAILURE_POWER_MW = 250
