@@ -45,6 +45,78 @@ LEADERBOARD_SIZE_PX = (WIDTH - LEADERBOARD_ORIGIN_PX[0], GRAPH_SIZE_PX[1])
 LEADERBOARD_MAX_ENTRIES = 20
 RAW_SCORES_PATH = "raw_scores.csv"
 
+# -- Reactor vessel diagram (drawn on the left, beside the graph) ------
+# The whole diagram is rendered into its own REACTOR_SIZE_PX surface in local
+# coordinates and blitted to the screen at REACTOR_ORIGIN_PX, so every layout
+# number below is relative to that surface's top-left corner.
+REACTOR_ORIGIN_PX = (40, 200)
+REACTOR_SIZE_PX = (480, 880)
+
+# Palette, kept local to the diagram rather than in config (these are purely
+# presentational to this one feature). Fuel is the same green used elsewhere.
+VESSEL_METAL = (140, 146, 158)
+VESSEL_METAL_DARK = (74, 80, 92)
+VESSEL_METAL_LIGHT = (198, 204, 214)
+COOLANT_TOP_COLOR = (86, 152, 205)      # light blue water, lighter near the surface
+COOLANT_BOTTOM_COLOR = (40, 92, 148)    # ...darkening with depth
+CONTROL_ROD_COLOR = (96, 102, 114)      # metal
+CONTROL_ROD_LIGHT = (156, 162, 174)
+CONTROL_ROD_DARK = (54, 58, 70)
+FUEL_ROD_COLOR = GREEN                  # glowing green fuel
+FUEL_ROD_GLOW = (188, 255, 194)
+CHERENKOV_COLOR = (120, 195, 255)       # characteristic blue glow from the core
+
+# Vessel geometry within the REACTOR_SIZE_PX surface.
+REACTOR_CX = REACTOR_SIZE_PX[0] // 2
+VESSEL_WALL_PX = 14
+VESSEL_LEFT_PX = REACTOR_CX - 170
+VESSEL_RIGHT_PX = REACTOR_CX + 170
+VESSEL_BODY_TOP_PX = 150
+VESSEL_BODY_BOTTOM_PX = 690
+VESSEL_DOME_H_PX = 70
+CRDM_HOUSING_TOP_PX = 8       # top of the control-rod drive housings above the head
+
+# Core (fuel + control rods) region, well inside the vessel interior.
+CORE_TOP_PX = 300
+CORE_BOTTOM_PX = 590
+CORE_LEFT_PX = REACTOR_CX - 140
+CORE_RIGHT_PX = REACTOR_CX + 140
+
+# Eight rods across the core: four lever-driven control rods (two outer safety rods
+# on the left lever, two regulating rods on the middle lever) and four scram rods
+# that sit fully withdrawn until a SCRAM drops them. Laid out symmetrically with the
+# safety rods outermost/thickest. Each entry is (x-centre, group name).
+ROD_HALF_WIDTHS = {"safety": 15, "regulating": 11, "scram": 10}
+# Scram rods carry an amber cap so they read as the emergency rods at a glance.
+SCRAM_ROD_CAP_COLOR = AMBER
+CONTROL_RODS = [
+    (REACTOR_CX - 118, "safety"),
+    (REACTOR_CX - 84, "scram"),
+    (REACTOR_CX - 50, "regulating"),
+    (REACTOR_CX - 16, "scram"),
+    (REACTOR_CX + 16, "scram"),
+    (REACTOR_CX + 50, "regulating"),
+    (REACTOR_CX + 84, "scram"),
+    (REACTOR_CX + 118, "safety"),
+]
+
+# Chemical shim: the right lever dissolves neutron-absorbing boron into the coolant
+# (instead of moving a rod), reddening the water more and more as it's increased.
+SHIM_TINT_COLOR = (210, 30, 30)
+SHIM_MAX_ALPHA = 175
+
+# Cherenkov glow is pre-rendered at a handful of discrete intensities (a per-pixel-
+# alpha surface can't be cheaply re-dimmed per frame), and the level nearest the
+# current reactor power is blitted each frame.
+CHERENKOV_LEVELS = 9
+CHERENKOV_MIN_ALPHA = 26
+CHERENKOV_MAX_ALPHA = 150
+
+
+def _lerp_color(color_a, color_b, t):
+    return tuple(int(a + (b - a) * t) for a, b in zip(color_a, color_b))
+
+
 # Popups (name entry, quit/restart instructions) live in the strip above the graph
 # (which starts at GRAPH_ORIGIN_PX[1]) instead of screen-centre, so they never
 # block the game view.
@@ -322,6 +394,202 @@ class System:
 
         self.graph_static_bg = bg
 
+    # -- Reactor vessel diagram -------------------------------------------
+
+    def _init_reactor_vessel(self):
+        self.reactor_surface = pygame.Surface(REACTOR_SIZE_PX)
+        self.reactor_title_font = pygame.font.Font(FONT_PATH, 20)
+        self.reactor_legend_font = pygame.font.Font(FONT_PATH, 13)
+        self._build_reactor_static_bg()
+        self._build_cherenkov_levels()
+        self._build_shim_overlay()
+
+    def _build_reactor_static_bg(self):
+        """The parts of the vessel that never move: the metal pressure vessel and its
+        drive housings, the coolant fill, and the green fuel rods. The control rods
+        and the Cherenkov glow are drawn over this every frame in _draw_reactor_vessel.
+        """
+        bg = pygame.Surface(REACTOR_SIZE_PX)
+        bg.fill(BLACK)
+
+        vessel_w = VESSEL_RIGHT_PX - VESSEL_LEFT_PX
+        interior_left = VESSEL_LEFT_PX + VESSEL_WALL_PX
+        interior_right = VESSEL_RIGHT_PX - VESSEL_WALL_PX
+
+        # Metal pressure vessel silhouette: a cylindrical body capped by an elliptical
+        # dome (head) top and bottom. The domes' full ellipses overlap the body rect,
+        # whose metal fill merges them into one capsule outline.
+        top_dome = pygame.Rect(VESSEL_LEFT_PX, VESSEL_BODY_TOP_PX - VESSEL_DOME_H_PX,
+                               vessel_w, 2 * VESSEL_DOME_H_PX)
+        bottom_dome = pygame.Rect(VESSEL_LEFT_PX, VESSEL_BODY_BOTTOM_PX - VESSEL_DOME_H_PX,
+                                  vessel_w, 2 * VESSEL_DOME_H_PX)
+        body_rect = pygame.Rect(VESSEL_LEFT_PX, VESSEL_BODY_TOP_PX,
+                                vessel_w, VESSEL_BODY_BOTTOM_PX - VESSEL_BODY_TOP_PX)
+        pygame.draw.ellipse(bg, VESSEL_METAL, top_dome)
+        pygame.draw.ellipse(bg, VESSEL_METAL, bottom_dome)
+        pygame.draw.rect(bg, VESSEL_METAL, body_rect)
+
+        # Coolant: the same silhouette inset by the wall thickness. The straight body
+        # section gets a top-to-bottom light-blue gradient (lighter near the surface,
+        # darker with depth); the small domes take the nearest gradient endpoint.
+        in_top_dome = top_dome.inflate(-2 * VESSEL_WALL_PX, -2 * VESSEL_WALL_PX)
+        in_bottom_dome = bottom_dome.inflate(-2 * VESSEL_WALL_PX, -2 * VESSEL_WALL_PX)
+        pygame.draw.ellipse(bg, COOLANT_TOP_COLOR, in_top_dome)
+        pygame.draw.ellipse(bg, COOLANT_BOTTOM_COLOR, in_bottom_dome)
+        for y in range(VESSEL_BODY_TOP_PX, VESSEL_BODY_BOTTOM_PX):
+            t = (y - VESSEL_BODY_TOP_PX) / (VESSEL_BODY_BOTTOM_PX - VESSEL_BODY_TOP_PX)
+            pygame.draw.line(bg, _lerp_color(COOLANT_TOP_COLOR, COOLANT_BOTTOM_COLOR, t),
+                             (interior_left, y), (interior_right, y))
+
+        # Fuel rods: a lattice of thin glowing-green rods filling the core, each with a
+        # brighter centre highlight so it reads as self-luminous. The movable control
+        # rods slide down over these.
+        spacing = 11
+        rod_w = 6
+        x = CORE_LEFT_PX
+        while x <= CORE_RIGHT_PX - rod_w:
+            pygame.draw.rect(bg, FUEL_ROD_COLOR, (x, CORE_TOP_PX, rod_w, CORE_BOTTOM_PX - CORE_TOP_PX))
+            pygame.draw.line(bg, FUEL_ROD_GLOW, (x + rod_w // 2, CORE_TOP_PX),
+                             (x + rod_w // 2, CORE_BOTTOM_PX))
+            x += spacing
+
+        # Wall bevel: light inner edge where the metal meets the water, dark outer edge.
+        pygame.draw.ellipse(bg, VESSEL_METAL_LIGHT, in_top_dome, 2)
+        pygame.draw.ellipse(bg, VESSEL_METAL_LIGHT, in_bottom_dome, 2)
+        pygame.draw.line(bg, VESSEL_METAL_LIGHT, (interior_left, VESSEL_BODY_TOP_PX),
+                         (interior_left, VESSEL_BODY_BOTTOM_PX), 2)
+        pygame.draw.line(bg, VESSEL_METAL_DARK, (interior_right, VESSEL_BODY_TOP_PX),
+                         (interior_right, VESSEL_BODY_BOTTOM_PX), 2)
+        pygame.draw.ellipse(bg, VESSEL_METAL_DARK, top_dome, 2)
+        pygame.draw.ellipse(bg, VESSEL_METAL_DARK, bottom_dome, 2)
+
+        # Control-rod drive housings: a metal tube above the head per rod, with a darker
+        # hollow slot the rod retracts up into (the rod itself is drawn over this).
+        for x_center, group in CONTROL_RODS:
+            half_w = ROD_HALF_WIDTHS[group]
+            housing = pygame.Rect(x_center - half_w - 4, CRDM_HOUSING_TOP_PX,
+                                  2 * half_w + 8, VESSEL_BODY_TOP_PX - VESSEL_DOME_H_PX + 12 - CRDM_HOUSING_TOP_PX)
+            pygame.draw.rect(bg, VESSEL_METAL, housing)
+            pygame.draw.rect(bg, VESSEL_METAL_DARK, housing, 2)
+            pygame.draw.rect(bg, CONTROL_ROD_DARK,
+                             (x_center - half_w, CRDM_HOUSING_TOP_PX, 2 * half_w, housing.height))
+
+        title = self.reactor_title_font.render("REACTOR CORE", True, GREEN)
+        title_y = VESSEL_BODY_BOTTOM_PX + VESSEL_DOME_H_PX + 6
+        bg.blit(title, (REACTOR_CX - title.get_width() // 2, title_y))
+
+        legend = [
+            ("SAFETY RODS: LEFT LEVER", WHITE),
+            ("REGULATING RODS: MID LEVER", WHITE),
+            ("SCRAM RODS: DROP ON SCRAM", SCRAM_ROD_CAP_COLOR),
+            ("CHEM SHIM: RIGHT LEVER (REDDENS WATER)", WHITE),
+        ]
+        ly = title_y + title.get_height() + 6
+        for line, colour in legend:
+            text = self.reactor_legend_font.render(line, True, colour)
+            bg.blit(text, (REACTOR_CX - text.get_width() // 2, ly))
+            ly += text.get_height() + 2
+
+        self.reactor_static_bg = bg
+
+    def _make_glow(self, width, height, peak_alpha):
+        """A soft radial blue glow, built once, by stacking filled ellipses from a
+        large faint one down to a small bright one (each overwrites the centre, so the
+        result is a radial alpha ramp peaking at peak_alpha in the middle).
+        """
+        glow = pygame.Surface((width, height), pygame.SRCALPHA)
+        steps = 26
+        for s in range(steps):
+            t = s / (steps - 1)  # 0 = outer/faint, 1 = centre/brightest
+            rw = (width / 2) * (1.0 - 0.92 * t)
+            rh = (height / 2) * (1.0 - 0.92 * t)
+            rect = pygame.Rect(width / 2 - rw, height / 2 - rh, 2 * rw, 2 * rh)
+            pygame.draw.ellipse(glow, (*CHERENKOV_COLOR, int(peak_alpha * t)), rect)
+        return glow
+
+    def _build_cherenkov_levels(self):
+        glow_w = (CORE_RIGHT_PX - CORE_LEFT_PX) + 150
+        glow_h = (CORE_BOTTOM_PX - CORE_TOP_PX) + 150
+        self.cherenkov_levels = []
+        for i in range(CHERENKOV_LEVELS):
+            peak = CHERENKOV_MIN_ALPHA + (CHERENKOV_MAX_ALPHA - CHERENKOV_MIN_ALPHA) * i / (CHERENKOV_LEVELS - 1)
+            self.cherenkov_levels.append(self._make_glow(glow_w, glow_h, peak))
+
+    def _build_shim_overlay(self):
+        """A red wash shaped like the coolant, blitted over the water each frame with a
+        per-surface alpha set from the chemical-shim level. Built once as a plain
+        (non-per-pixel) surface with a black colour-key so set_alpha can re-dim it
+        cheaply every frame (which a per-pixel-alpha surface can't do).
+        """
+        overlay = pygame.Surface(REACTOR_SIZE_PX)
+        overlay.fill(BLACK)
+        vessel_w = VESSEL_RIGHT_PX - VESSEL_LEFT_PX
+        top_dome = pygame.Rect(VESSEL_LEFT_PX, VESSEL_BODY_TOP_PX - VESSEL_DOME_H_PX,
+                               vessel_w, 2 * VESSEL_DOME_H_PX).inflate(-2 * VESSEL_WALL_PX, -2 * VESSEL_WALL_PX)
+        bottom_dome = pygame.Rect(VESSEL_LEFT_PX, VESSEL_BODY_BOTTOM_PX - VESSEL_DOME_H_PX,
+                                  vessel_w, 2 * VESSEL_DOME_H_PX).inflate(-2 * VESSEL_WALL_PX, -2 * VESSEL_WALL_PX)
+        body = pygame.Rect(VESSEL_LEFT_PX + VESSEL_WALL_PX, VESSEL_BODY_TOP_PX,
+                           vessel_w - 2 * VESSEL_WALL_PX, VESSEL_BODY_BOTTOM_PX - VESSEL_BODY_TOP_PX)
+        pygame.draw.ellipse(overlay, SHIM_TINT_COLOR, top_dome)
+        pygame.draw.ellipse(overlay, SHIM_TINT_COLOR, bottom_dome)
+        pygame.draw.rect(overlay, SHIM_TINT_COLOR, body)
+        overlay.set_colorkey(BLACK)
+        self.shim_overlay = overlay
+
+    def _draw_reactor_vessel(self, rod_insertions, power_fraction, shim_fraction):
+        """rod_insertions: {"safety", "regulating", "scram"} -> insertion in [0, 1],
+        where 1 is a fully inserted (fully down) rod. power_fraction sets the Cherenkov
+        glow brightness; shim_fraction reddens the coolant. All in [0, 1].
+        """
+        surface = self.reactor_surface
+        surface.blit(self.reactor_static_bg, (0, 0))
+
+        interior_rect = pygame.Rect(
+            VESSEL_LEFT_PX + VESSEL_WALL_PX, VESSEL_BODY_TOP_PX,
+            (VESSEL_RIGHT_PX - VESSEL_WALL_PX) - (VESSEL_LEFT_PX + VESSEL_WALL_PX),
+            VESSEL_BODY_BOTTOM_PX - VESSEL_BODY_TOP_PX,
+        )
+
+        # Cherenkov glow over the core, brighter with power. Clipped to the coolant
+        # column so the soft glow doesn't spill out over the metal walls / black panel.
+        idx = min(max(int(round(power_fraction * (CHERENKOV_LEVELS - 1))), 0), CHERENKOV_LEVELS - 1)
+        glow = self.cherenkov_levels[idx]
+        core_cx = (CORE_LEFT_PX + CORE_RIGHT_PX) // 2
+        core_cy = (CORE_TOP_PX + CORE_BOTTOM_PX) // 2
+        surface.set_clip(interior_rect)
+        surface.blit(glow, (core_cx - glow.get_width() // 2, core_cy - glow.get_height() // 2))
+        surface.set_clip(None)
+
+        # Chemical shim: wash the coolant redder the more boron is dissolved in it.
+        self.shim_overlay.set_alpha(int(min(max(shim_fraction, 0.0), 1.0) * SHIM_MAX_ALPHA))
+        surface.blit(self.shim_overlay, (0, 0))
+
+        # Rods at their current insertion depth. Each rod is one core-height long, so
+        # insertion 1.0 exactly fills the core and 0.0 lifts it clear, up into its drive
+        # housing. Scram rods carry an amber cap and normally sit withdrawn.
+        core_h = CORE_BOTTOM_PX - CORE_TOP_PX
+        for x_center, group in CONTROL_RODS:
+            f = rod_insertions[group]
+            half_w = ROD_HALF_WIDTHS[group]
+            rod_top = int(CORE_TOP_PX - (1.0 - f) * core_h)
+            rod_bottom = rod_top + core_h
+            edge_w = max(2, half_w // 3)
+
+            # Thin drive shaft from the rod top up into the housing.
+            shaft_w = max(3, half_w // 2)
+            pygame.draw.rect(surface, CONTROL_ROD_DARK,
+                             (x_center - shaft_w // 2, CRDM_HOUSING_TOP_PX, shaft_w, rod_top - CRDM_HOUSING_TOP_PX))
+
+            pygame.draw.rect(surface, CONTROL_ROD_COLOR, (x_center - half_w, rod_top, 2 * half_w, core_h))
+            # Cylindrical shading: light edge left, dark edge right, dark tip.
+            pygame.draw.rect(surface, CONTROL_ROD_LIGHT, (x_center - half_w, rod_top, edge_w, core_h))
+            pygame.draw.rect(surface, CONTROL_ROD_DARK, (x_center + half_w - edge_w, rod_top, edge_w, core_h))
+            pygame.draw.rect(surface, CONTROL_ROD_DARK, (x_center - half_w, rod_bottom - 4, 2 * half_w, 4))
+            if group == "scram":
+                pygame.draw.rect(surface, SCRAM_ROD_CAP_COLOR, (x_center - half_w, rod_top, 2 * half_w, 7))
+
+        self.screen.blit(surface, REACTOR_ORIGIN_PX)
+
     @staticmethod
     def _power_str(power):
         return f"Power = {power:.3f} MW"
@@ -572,6 +840,7 @@ class System:
         self._init_display()
         if self.pk_n_animation:
             self._init_graph()
+            self._init_reactor_vessel()
         return self._game_loop()
 
     def _game_loop(self):
@@ -728,6 +997,19 @@ class System:
             self._draw_fps()
             if self.pk_n_animation:
                 self._draw_leaderboard()
+                # Safety (left lever) and regulating (mid lever) rods track their
+                # levers and are unaffected by a SCRAM. The scram rods sit withdrawn
+                # and only drop - fully, immediately - while a SCRAM lock is active
+                # (self.scramming). The right lever is now chemical shim: it reddens
+                # the coolant rather than moving a rod.
+                rod_insertions = {
+                    "safety": min(max(lever_rel_pos[0], 0.0), 1.0),
+                    "regulating": min(max(lever_rel_pos[1], 0.0), 1.0),
+                    "scram": 1.0 if self.scramming else 0.0,
+                }
+                shim_fraction = min(max(lever_rel_pos[2], 0.0), 1.0)
+                power_fraction = min(max(self.pk.n / self.FAILURE_POWER_MW, 0.0), 1.0)
+                self._draw_reactor_vessel(rod_insertions, power_fraction, shim_fraction)
 
             # Wait for the next frame
             self.clock.tick(self.frame_rate)
