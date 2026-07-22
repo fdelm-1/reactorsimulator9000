@@ -53,3 +53,13 @@ NUMBER_OF_RODS = 52*17*17
 FUEL_ROD_MASS = 10400 * math.pi * ((ROD_DIAMETER/2)**2) * 6
 FUEL_SPECIFIC_HEAT_CAPACITY = 300
 FUEL_ROD_HEAT_TRANSFER_AREA = 6 * math.pi * ((ROD_DIAMETER/2) ** 2)
+
+# Coolant mass flow rate (kg/s): a base amount, plus an increment for each panel
+# switch that is turned on. More flow removes more heat, so it cools the fuel faster.
+BASE_MASS_FLOW_RATE = 10000
+FLOW_RATE_PER_SWITCH = 5000
+
+# Fuel temperature (deg C): the reactor starts here, and an automatic SCRAM fires if
+# the temperature ever climbs above the scram temperature.
+STARTING_TEMPERATURE_C = 800
+SCRAM_TEMPERATURE_C = 1400
