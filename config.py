@@ -1,9 +1,13 @@
+# -- GAME DESIGN ---------------------------------------------------------
+
 WHITE = (255,255,255)
 BLACK = (0,0,0)
 GREEN = (116,228,124)
 AMBER = (239,183,0)
 RED = (225,0,0)
 GRID = (90,90,90)
+
+# -- GAME BALANCE --------------------------------------------------------
 
 TARGET_POWER_MW = 200
 TARGET_TOLERANCE_MW = 8
@@ -31,3 +35,5 @@ SCRAM_LOCK_DURATION_S = 2.0
 # An automatic SCRAM (triggered by exceeding FAILURE_POWER_MW) locks k_eff
 # for this many times longer than a manually triggered one.
 SCRAM_AUTO_LOCK_MULTIPLIER = 2
+
+# -- TEMP CONTROL ------------------------------------------------------
