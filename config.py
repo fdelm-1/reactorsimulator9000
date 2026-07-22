@@ -1,6 +1,7 @@
 TARGET_POWER_MW = 200
 TARGET_TOLERANCE_MW = 8
 FAILURE_POWER_MW = 250
+TARGET_HOLD_TIME_S = 5.0
 
 # k_eff with all control-rod levers fully up (neutral - no lever contributes
 # anything).
