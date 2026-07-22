@@ -17,13 +17,12 @@ import pygame  # noqa: E402  (must import after PYGAME_HIDE_SUPPORT_PROMPT is se
 
 
 WIDTH, HEIGHT = 1920, 1080
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-GREEN = "#74e47c"
-GREEN_RGB = (0x74, 0xE4, 0x7C)
-AMBER_RGB = (255, 176, 0)
-RED_RGB = (255, 0, 0)
-GRID_COLOR = (90, 90, 90)
+WHITE = config.WHITE
+BLACK = config.BLACK
+GREEN = config.GREEN
+AMBER = config.AMBER
+RED = config.RED
+GRID_COLOR = config.GRID
 FONT_PATH = "./fonts/retro.ttf"
 
 GRAPH_ORIGIN_PX = (WIDTH * 0.3, HEIGHT * 0.2)
@@ -272,12 +271,12 @@ class System:
         plot_rect = self.graph_plot_rect
 
         self._draw_translucent_band(bg, self.TARGET_POWER_LOWER_MW, self.TARGET_POWER_UPPER_MW,
-                                     GREEN_RGB, TARGET_ZONE_ALPHA)
+                                     GREEN, TARGET_ZONE_ALPHA)
         self._draw_translucent_band(bg, self.TARGET_POWER_UPPER_MW, self.FAILURE_POWER_MW,
-                                     AMBER_RGB, WARNING_ZONE_ALPHA)
+                                     AMBER, WARNING_ZONE_ALPHA)
         self._draw_translucent_band(bg, self.FAILURE_POWER_MW,
                                      min(self.FAILURE_ZONE_TOP_MW, self.Y_AXIS_MAX_MW),
-                                     RED_RGB, FAILURE_ZONE_ALPHA)
+                                     RED, FAILURE_ZONE_ALPHA)
 
         mw = self.Y_AXIS_MIN_MW
         while mw <= self.Y_AXIS_MAX_MW:
