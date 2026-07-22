@@ -7,6 +7,7 @@ import threading
 from os import environ
 import csv
 
+import config
 from point_kinetics import PointKinetics
 
 environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"
@@ -61,12 +62,12 @@ class System:
     # very right edge, leaving a lookahead gap instead of the line hitting the wall.
     LIVE_POINT_FRACTION = 0.8
 
-    TARGET_POWER_MW = 200
-    TARGET_POWER_TOLERANCE_MW = 8
+    TARGET_POWER_MW = config.TARGET_POWER_MW
+    TARGET_POWER_TOLERANCE_MW = config.TARGET_TOLERANCE_MW
     TARGET_POWER_LOWER_MW = TARGET_POWER_MW - TARGET_POWER_TOLERANCE_MW
     TARGET_POWER_UPPER_MW = TARGET_POWER_MW + TARGET_POWER_TOLERANCE_MW
     TARGET_HOLD_TIME_S = 5.0
-    FAILURE_POWER_MW = 250
+    FAILURE_POWER_MW = config.FAILURE_POWER_MW
     FAILURE_ZONE_TOP_MW = 500  # how far up the graph's red danger band is drawn
     # displayed/plotted power never reads below this - just enough to avoid a literal
     # "0.000 MW" before the reactor starts producing power. Kept small on purpose: at
@@ -82,14 +83,23 @@ class System:
     Y_AXIS_MAX_MW = 300
 
     # k_eff with all levers fully up (neutral - no lever contributes anything).
-    BASE_K_EFF = 1.0089
+    BASE_K_EFF = config.BASE_K_EFF
 
     # How much each lever (left, middle, right) subtracts from BASE_K_EFF when pushed
     # all the way down; 0 when pushed all the way up (no effect at maximum), linear
     # in between. Levers only ever pull k_eff down from the base, never push it above.
-    LEVER_MIN_EFFECT = [-0.01, -0.003, -0.001]
+    LEVER_MIN_EFFECT = config.LEVER_MIN_EFFECT
 
     MIN_ALLOWABLE_K_EFF = BASE_K_EFF + sum(m for m in LEVER_MIN_EFFECT)
+
+    # SCRAM behaviour (manual or automatic - see _trigger_scram). Both immediately
+    # multiply the reactor's power by SCRAM_POWER_FACTOR and lock k_eff at
+    # MIN_ALLOWABLE_K_EFF; an automatic SCRAM (triggered by exceeding
+    # FAILURE_POWER_MW) holds the lock SCRAM_AUTO_LOCK_MULTIPLIER times longer than
+    # a manual one, since it represents a more severe, unplanned trip.
+    SCRAM_POWER_FACTOR = config.SCRAM_POWER_FACTOR
+    SCRAM_LOCK_DURATION_S = config.SCRAM_LOCK_DURATION_S
+    SCRAM_AUTO_LOCK_MULTIPLIER = config.SCRAM_AUTO_LOCK_MULTIPLIER
 
     # Yellow LED window: a lever's own k_eff contribution counts as "neutral" (not
     # positive/negative) within +-0.0005 of 1.0, rather than requiring it to land on
@@ -165,6 +175,21 @@ class System:
 
         self.pygame_k_eff = temp_k_eff
 
+    def _trigger_scram(self, automatic):
+        """SCRAM: immediately cut the reactor's power and lock k_eff at its minimum,
+        ignoring lever/rod input, until the lock expires (see the per-frame handling
+        in _game_loop). Guarded by self.scramming so re-triggering (e.g. holding
+        SPACE, or staying above FAILURE_POWER_MW for multiple frames before the power
+        cut takes effect) doesn't restack the lock or repeatedly halve the power.
+        """
+        if self.scramming:
+            return
+        self.scramming = True
+        self.pk.scale_solution(self.SCRAM_POWER_FACTOR)
+        self.pygame_k_eff = self.MIN_ALLOWABLE_K_EFF
+        multiplier = self.SCRAM_AUTO_LOCK_MULTIPLIER if automatic else 1
+        self.scram_lock_remaining_s = self.SCRAM_LOCK_DURATION_S * multiplier
+
     # -- Setup -----------------------------------------------------------
 
     def _init_display(self):
@@ -180,10 +205,10 @@ class System:
 
         self.pygame_k_eff = self.BASE_K_EFF
         self.inc = 0.00005 * 30 / self.frame_rate
-        self.scram_rate = 10 * self.inc
         self.lifting_rod = False
         self.lowering_rod = False
         self.scramming = False
+        self.scram_lock_remaining_s = 0.0
 
         # Tied to the levers' real combined ceiling so pygame_k_eff is never clamped
         # short of what the levers can actually produce, and "MAXIMUM!" can display.
@@ -579,7 +604,7 @@ class System:
 
                     if event.key in (pygame.K_SPACE, pygame.K_0):
                         if self.running:
-                            self.scramming = True
+                            self._trigger_scram(automatic=False)
 
                     if event.key in (pygame.K_w, pygame.K_UP, pygame.K_2):
                         self.lifting_rod = True
@@ -629,7 +654,7 @@ class System:
                     self.time_at_target_condition = 0.0                    
 
                 if self.pk.n > self.FAILURE_POWER_MW:
-                    self.scramming = True
+                    self._trigger_scram(automatic=True)
 
                 elif self.time_at_target_condition >= self.TARGET_HOLD_TIME_S:
                     self._end_game()
@@ -660,15 +685,20 @@ class System:
             if show_quit_popup:
                 self._draw_popup(quit_restart_message)
 
-            self.pygame_k_eff -= self.scram_rate if self.scramming else 0
-            self.pygame_k_eff += self.inc if self.lifting_rod else 0
-            self.pygame_k_eff -= self.inc if self.lowering_rod else 0
-            self.pygame_k_eff = min(max(self.MIN_ALLOWABLE_K_EFF, self.pygame_k_eff), self.max_allowable_k_eff)
+            if self.scramming:
+                # clock.get_time() is the actual duration of the previous frame, in
+                # ms - see the time_at_target_condition comment above for why the
+                # nominal frame_time isn't used instead.
+                self.scram_lock_remaining_s -= self.clock.get_time() / 1000.0
+                self.pygame_k_eff = self.MIN_ALLOWABLE_K_EFF
+                if self.scram_lock_remaining_s <= 0.0:
+                    self.scramming = False
+            else:
+                self.pygame_k_eff += self.inc if self.lifting_rod else 0
+                self.pygame_k_eff -= self.inc if self.lowering_rod else 0
+                self.pygame_k_eff = min(max(self.MIN_ALLOWABLE_K_EFF, self.pygame_k_eff), self.max_allowable_k_eff)
 
             self.k_eff = self.pygame_k_eff
-
-            if self.scramming and self.pygame_k_eff == self.MIN_ALLOWABLE_K_EFF:
-                self.scramming = False
 
             self._draw_fps()
             if self.pk_n_animation:

@@ -18,7 +18,13 @@ wikipedia_precursors = [
         PrecursorGroup(3.01,   0.000273),
     ]
 
-wikipedia_precursors_stable_solution = np.array([17.33870791164053, 46.68852515479314, 11.477477500705534, 8.531561467616813, 0.6561403509912391, 0.09069767442452846, 1.0])
+# The array below is the precursor/n steady-state ratio for a critical (k_eff = 1)
+# reactor with n = 1. Scaled up so the game starts producing STARTING_POWER_MW
+# rather than 1 MW - scaling every component keeps them in the same equilibrium
+# ratio, just at a higher power level.
+STARTING_POWER_MW = 10.0
+
+wikipedia_precursors_stable_solution = np.array([17.33870791164053, 46.68852515479314, 11.477477500705534, 8.531561467616813, 0.6561403509912391, 0.09069767442452846, 1.0]) * STARTING_POWER_MW
 
 
 class PointKinetics:
@@ -57,6 +63,13 @@ class PointKinetics:
     
     def reset_sol(self):
         self.sol = self.initial_solution
+
+    def scale_solution(self, factor):
+        """Uniformly rescale every precursor population and n by factor, keeping
+        their relative equilibrium ratios. Used to apply an instantaneous SCRAM
+        power cut rather than modelling rod insertion as a continuous transient.
+        """
+        self.sol = self.sol * factor
     
     def enable_n_history(self, back_duration, dt):
         self.n_history = True
