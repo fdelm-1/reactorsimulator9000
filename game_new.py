@@ -20,6 +20,7 @@ WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 GREEN = "#74e47c"
 GREEN_RGB = (0x74, 0xE4, 0x7C)
+AMBER_RGB = (255, 176, 0)
 RED_RGB = (255, 0, 0)
 GRID_COLOR = (90, 90, 90)
 FONT_PATH = "./fonts/retro.ttf"
@@ -33,6 +34,7 @@ GRAPH_MARGIN_BOTTOM = 50
 GRAPH_BORDER_WIDTH = 2
 GRAPH_LINE_WIDTH = 4
 TARGET_ZONE_ALPHA = 130
+WARNING_ZONE_ALPHA = 130
 FAILURE_ZONE_ALPHA = 130
 Y_GRID_STEP_MW = 50
 
@@ -66,7 +68,12 @@ class System:
     TARGET_HOLD_TIME_S = 5.0
     FAILURE_POWER_MW = 250
     FAILURE_ZONE_TOP_MW = 500  # how far up the graph's red danger band is drawn
-    MIN_DISPLAY_POWER_MW = 10  # displayed/plotted power never reads below this
+    # displayed/plotted power never reads below this - just enough to avoid a literal
+    # "0.000 MW" before the reactor starts producing power. Kept small on purpose: at
+    # 10 the reactor's real exponential rise (rate set by k_eff) stayed under this
+    # floor for a visible stretch at the start of every run, which read as a startup
+    # power cap that lasted longer the lower k_eff was - not an intended feature.
+    MIN_DISPLAY_POWER_MW = 1
 
     # Fixed graph y-axis range in MW. Kept constant (no per-frame autoscaling from the
     # data's min/max) so the view never "zooms" and the y-gridlines only need drawing
@@ -241,6 +248,8 @@ class System:
 
         self._draw_translucent_band(bg, self.TARGET_POWER_LOWER_MW, self.TARGET_POWER_UPPER_MW,
                                      GREEN_RGB, TARGET_ZONE_ALPHA)
+        self._draw_translucent_band(bg, self.TARGET_POWER_UPPER_MW, self.FAILURE_POWER_MW,
+                                     AMBER_RGB, WARNING_ZONE_ALPHA)
         self._draw_translucent_band(bg, self.FAILURE_POWER_MW,
                                      min(self.FAILURE_ZONE_TOP_MW, self.Y_AXIS_MAX_MW),
                                      RED_RGB, FAILURE_ZONE_ALPHA)
