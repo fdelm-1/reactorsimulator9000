@@ -9,6 +9,7 @@ import csv
 
 import config
 from point_kinetics import PointKinetics
+from temperatureModel import TemperatureModel
 
 environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"
 import pygame  # noqa: E402  (must import after PYGAME_HIDE_SUPPORT_PROMPT is set)
@@ -45,6 +46,18 @@ LEADERBOARD_SIZE_PX = (WIDTH - LEADERBOARD_ORIGIN_PX[0], GRAPH_SIZE_PX[1])
 LEADERBOARD_MAX_ENTRIES = 20
 RAW_SCORES_PATH = "raw_scores.csv"
 
+# -- Fuel-temperature dial (right of the graph, where the leaderboard sits) --------
+# The thermometer occupies the right column during play; the leaderboard only takes
+# it over once the game is won.
+THERMO_ORIGIN_PX = LEADERBOARD_ORIGIN_PX
+THERMO_SIZE_PX = LEADERBOARD_SIZE_PX
+DIAL_MIN_C = 500
+DIAL_MAX_C = config.SCRAM_TEMPERATURE_C + 100   # a little headroom past the scram line
+DIAL_WARN_C = config.SCRAM_TEMPERATURE_C - 200  # amber zone begins here
+DIAL_RED_C = config.SCRAM_TEMPERATURE_C         # red (scram) zone begins here
+DIAL_START_ANGLE_DEG = 135                       # min temp sits at lower-left...
+DIAL_SWEEP_DEG = 270                             # ...sweeping clockwise to lower-right
+
 # -- Reactor vessel diagram (drawn on the left, beside the graph) ------
 # The whole diagram is rendered into its own REACTOR_SIZE_PX surface in local
 # coordinates and blitted to the screen at REACTOR_ORIGIN_PX, so every layout
@@ -61,7 +74,6 @@ VESSEL_METAL_LIGHT = (198, 204, 214)
 COOLANT_TOP_COLOR = (86, 152, 205)      # light blue water, lighter near the surface
 COOLANT_BOTTOM_COLOR = (40, 92, 148)    # ...darkening with depth
 CONTROL_ROD_COLOR = (96, 102, 114)      # metal
-CONTROL_ROD_LIGHT = (156, 162, 174)
 CONTROL_ROD_DARK = (54, 58, 70)
 FUEL_ROD_COLOR = GREEN                  # glowing green fuel
 FUEL_ROD_GLOW = (188, 255, 194)
@@ -69,6 +81,9 @@ CHERENKOV_COLOR = (120, 195, 255)       # characteristic blue glow from the core
 
 # Vessel geometry within the REACTOR_SIZE_PX surface.
 REACTOR_CX = REACTOR_SIZE_PX[0] // 2
+# The vessel shell (its domed heads) is drawn as chunky horizontal bars this many
+# pixels tall/wide instead of a smooth ellipse, for a blocky retro look.
+VESSEL_PIXEL_STEP = 16
 VESSEL_WALL_PX = 14
 VESSEL_LEFT_PX = REACTOR_CX - 170
 VESSEL_RIGHT_PX = REACTOR_CX + 170
@@ -206,6 +221,9 @@ class System:
         self.pk = PointKinetics()
         self.k_eff = self.BASE_K_EFF
 
+        self.temperature_model = TemperatureModel()
+        self.temperature = config.STARTING_TEMPERATURE_C
+
         self.pk_n_animation = pk_n_animation
         self.complexity_level = complexity_level
 
@@ -330,6 +348,7 @@ class System:
 
         self.running = False
         self.time_at_target_condition = 0.0
+        self.temperature = config.STARTING_TEMPERATURE_C
 
         # Seed each lever's effective (drawn-out) position at its current deadzoned
         # reading so the diagram/k_eff start settled rather than ramping in from 0.
@@ -452,6 +471,24 @@ class System:
         self._build_cherenkov_levels()
         self._build_shim_overlay()
 
+    @staticmethod
+    def _fill_pixel_dome(surface, color, cx, cy, rx, ry, is_top, step):
+        """Fill the top (or bottom) half of an ellipse as chunky horizontal bars, each
+        `step` px tall and quantised to `step` px wide - so the vessel's domed heads
+        read as a blocky, pixelated shell rather than a smooth circle.
+        """
+        if is_top:
+            y0, y1 = int(cy - ry), int(cy)
+        else:
+            y0, y1 = int(cy), int(cy + ry)
+        y = y0
+        while y < y1:
+            frac = 1.0 - ((y + step / 2 - cy) / ry) ** 2
+            if frac > 0:
+                w = min(rx, max(step, round(rx * math.sqrt(frac) / step) * step))
+                surface.fill(color, (int(cx - w), y, int(2 * w), min(step, y1 - y)))
+            y += step
+
     def _build_reactor_static_bg(self):
         """The parts of the vessel that never move: the metal pressure vessel and its
         drive housings, the coolant fill, and the green fuel rods. The control rods
@@ -461,29 +498,26 @@ class System:
         bg.fill(BLACK)
 
         vessel_w = VESSEL_RIGHT_PX - VESSEL_LEFT_PX
+        rx = vessel_w / 2
+        rx_in = rx - VESSEL_WALL_PX
+        ry_in = VESSEL_DOME_H_PX - VESSEL_WALL_PX
         interior_left = VESSEL_LEFT_PX + VESSEL_WALL_PX
         interior_right = VESSEL_RIGHT_PX - VESSEL_WALL_PX
+        step = VESSEL_PIXEL_STEP
 
-        # Metal pressure vessel silhouette: a cylindrical body capped by an elliptical
-        # dome (head) top and bottom. The domes' full ellipses overlap the body rect,
-        # whose metal fill merges them into one capsule outline.
-        top_dome = pygame.Rect(VESSEL_LEFT_PX, VESSEL_BODY_TOP_PX - VESSEL_DOME_H_PX,
-                               vessel_w, 2 * VESSEL_DOME_H_PX)
-        bottom_dome = pygame.Rect(VESSEL_LEFT_PX, VESSEL_BODY_BOTTOM_PX - VESSEL_DOME_H_PX,
-                                  vessel_w, 2 * VESSEL_DOME_H_PX)
+        # Metal pressure vessel silhouette: a straight cylindrical body capped by a
+        # blocky (pixelated) domed head top and bottom.
         body_rect = pygame.Rect(VESSEL_LEFT_PX, VESSEL_BODY_TOP_PX,
                                 vessel_w, VESSEL_BODY_BOTTOM_PX - VESSEL_BODY_TOP_PX)
-        pygame.draw.ellipse(bg, VESSEL_METAL, top_dome)
-        pygame.draw.ellipse(bg, VESSEL_METAL, bottom_dome)
+        self._fill_pixel_dome(bg, VESSEL_METAL, REACTOR_CX, VESSEL_BODY_TOP_PX, rx, VESSEL_DOME_H_PX, True, step)
+        self._fill_pixel_dome(bg, VESSEL_METAL, REACTOR_CX, VESSEL_BODY_BOTTOM_PX, rx, VESSEL_DOME_H_PX, False, step)
         pygame.draw.rect(bg, VESSEL_METAL, body_rect)
 
         # Coolant: the same silhouette inset by the wall thickness. The straight body
         # section gets a top-to-bottom light-blue gradient (lighter near the surface,
-        # darker with depth); the small domes take the nearest gradient endpoint.
-        in_top_dome = top_dome.inflate(-2 * VESSEL_WALL_PX, -2 * VESSEL_WALL_PX)
-        in_bottom_dome = bottom_dome.inflate(-2 * VESSEL_WALL_PX, -2 * VESSEL_WALL_PX)
-        pygame.draw.ellipse(bg, COOLANT_TOP_COLOR, in_top_dome)
-        pygame.draw.ellipse(bg, COOLANT_BOTTOM_COLOR, in_bottom_dome)
+        # darker with depth); the blocky domes take the nearest gradient endpoint.
+        self._fill_pixel_dome(bg, COOLANT_TOP_COLOR, REACTOR_CX, VESSEL_BODY_TOP_PX, rx_in, ry_in, True, step)
+        self._fill_pixel_dome(bg, COOLANT_BOTTOM_COLOR, REACTOR_CX, VESSEL_BODY_BOTTOM_PX, rx_in, ry_in, False, step)
         for y in range(VESSEL_BODY_TOP_PX, VESSEL_BODY_BOTTOM_PX):
             t = (y - VESSEL_BODY_TOP_PX) / (VESSEL_BODY_BOTTOM_PX - VESSEL_BODY_TOP_PX)
             pygame.draw.line(bg, _lerp_color(COOLANT_TOP_COLOR, COOLANT_BOTTOM_COLOR, t),
@@ -501,15 +535,11 @@ class System:
                              (x + rod_w // 2, CORE_BOTTOM_PX))
             x += spacing
 
-        # Wall bevel: light inner edge where the metal meets the water, dark outer edge.
-        pygame.draw.ellipse(bg, VESSEL_METAL_LIGHT, in_top_dome, 2)
-        pygame.draw.ellipse(bg, VESSEL_METAL_LIGHT, in_bottom_dome, 2)
+        # Straight wall bevel down the body sides (light left, dark right).
         pygame.draw.line(bg, VESSEL_METAL_LIGHT, (interior_left, VESSEL_BODY_TOP_PX),
                          (interior_left, VESSEL_BODY_BOTTOM_PX), 2)
         pygame.draw.line(bg, VESSEL_METAL_DARK, (interior_right, VESSEL_BODY_TOP_PX),
                          (interior_right, VESSEL_BODY_BOTTOM_PX), 2)
-        pygame.draw.ellipse(bg, VESSEL_METAL_DARK, top_dome, 2)
-        pygame.draw.ellipse(bg, VESSEL_METAL_DARK, bottom_dome, 2)
 
         # Control-rod drive housings: a metal tube above the head per rod, with a darker
         # hollow slot the rod retracts up into (the rod itself is drawn over this).
@@ -572,14 +602,14 @@ class System:
         overlay = pygame.Surface(REACTOR_SIZE_PX)
         overlay.fill(BLACK)
         vessel_w = VESSEL_RIGHT_PX - VESSEL_LEFT_PX
-        top_dome = pygame.Rect(VESSEL_LEFT_PX, VESSEL_BODY_TOP_PX - VESSEL_DOME_H_PX,
-                               vessel_w, 2 * VESSEL_DOME_H_PX).inflate(-2 * VESSEL_WALL_PX, -2 * VESSEL_WALL_PX)
-        bottom_dome = pygame.Rect(VESSEL_LEFT_PX, VESSEL_BODY_BOTTOM_PX - VESSEL_DOME_H_PX,
-                                  vessel_w, 2 * VESSEL_DOME_H_PX).inflate(-2 * VESSEL_WALL_PX, -2 * VESSEL_WALL_PX)
+        rx_in = vessel_w / 2 - VESSEL_WALL_PX
+        ry_in = VESSEL_DOME_H_PX - VESSEL_WALL_PX
+        step = VESSEL_PIXEL_STEP
+        # Match the (pixelated) coolant silhouette so the red wash lines up with the water.
+        self._fill_pixel_dome(overlay, SHIM_TINT_COLOR, REACTOR_CX, VESSEL_BODY_TOP_PX, rx_in, ry_in, True, step)
+        self._fill_pixel_dome(overlay, SHIM_TINT_COLOR, REACTOR_CX, VESSEL_BODY_BOTTOM_PX, rx_in, ry_in, False, step)
         body = pygame.Rect(VESSEL_LEFT_PX + VESSEL_WALL_PX, VESSEL_BODY_TOP_PX,
                            vessel_w - 2 * VESSEL_WALL_PX, VESSEL_BODY_BOTTOM_PX - VESSEL_BODY_TOP_PX)
-        pygame.draw.ellipse(overlay, SHIM_TINT_COLOR, top_dome)
-        pygame.draw.ellipse(overlay, SHIM_TINT_COLOR, bottom_dome)
         pygame.draw.rect(overlay, SHIM_TINT_COLOR, body)
         overlay.set_colorkey(BLACK)
         self.shim_overlay = overlay
@@ -620,19 +650,14 @@ class System:
             f = rod_insertions[group]
             half_w = ROD_HALF_WIDTHS[group]
             rod_top = int(CORE_TOP_PX - (1.0 - f) * core_h)
-            rod_bottom = rod_top + core_h
-            edge_w = max(2, half_w // 3)
 
             # Thin drive shaft from the rod top up into the housing.
             shaft_w = max(3, half_w // 2)
             pygame.draw.rect(surface, CONTROL_ROD_DARK,
                              (x_center - shaft_w // 2, CRDM_HOUSING_TOP_PX, shaft_w, rod_top - CRDM_HOUSING_TOP_PX))
 
+            # Flat, unshaded rod body (retro look). Scram rods keep their amber cap.
             pygame.draw.rect(surface, CONTROL_ROD_COLOR, (x_center - half_w, rod_top, 2 * half_w, core_h))
-            # Cylindrical shading: light edge left, dark edge right, dark tip.
-            pygame.draw.rect(surface, CONTROL_ROD_LIGHT, (x_center - half_w, rod_top, edge_w, core_h))
-            pygame.draw.rect(surface, CONTROL_ROD_DARK, (x_center + half_w - edge_w, rod_top, edge_w, core_h))
-            pygame.draw.rect(surface, CONTROL_ROD_DARK, (x_center - half_w, rod_bottom - 4, 2 * half_w, 4))
             if group == "scram":
                 pygame.draw.rect(surface, SCRAM_ROD_CAP_COLOR, (x_center - half_w, rod_top, 2 * half_w, 7))
 
@@ -782,6 +807,89 @@ class System:
     def _draw_leaderboard(self):
         self.screen.blit(self._leaderboard_surface, LEADERBOARD_ORIGIN_PX)
 
+    # -- Fuel-temperature dial --------------------------------------------
+
+    def _init_thermometer(self):
+        self.thermo_surface = pygame.Surface((int(THERMO_SIZE_PX[0]), int(THERMO_SIZE_PX[1])))
+        self.thermo_title_font = pygame.font.Font(FONT_PATH, 22)
+        self.thermo_tick_font = pygame.font.Font(FONT_PATH, 14)
+        self.thermo_value_font = pygame.font.Font(FONT_PATH, 42)
+        self.thermo_note_font = pygame.font.Font(FONT_PATH, 15)
+        self.thermo_center = (int(THERMO_SIZE_PX[0]) // 2, 320)
+        self.thermo_radius = 165
+        self._build_thermometer_static()
+
+    @staticmethod
+    def _temp_to_angle(temp):
+        frac = min(max((temp - DIAL_MIN_C) / (DIAL_MAX_C - DIAL_MIN_C), 0.0), 1.0)
+        return math.radians(DIAL_START_ANGLE_DEG + frac * DIAL_SWEEP_DEG)
+
+    def _dial_point(self, angle, radius):
+        cx, cy = self.thermo_center
+        return (cx + radius * math.cos(angle), cy + radius * math.sin(angle))
+
+    @staticmethod
+    def _temp_zone_color(temp):
+        if temp >= DIAL_RED_C:
+            return RED
+        if temp >= DIAL_WARN_C:
+            return AMBER
+        return GREEN
+
+    def _build_thermometer_static(self):
+        """The dial face - title, coloured zone arc, tick marks + labels - drawn once.
+        Only the needle and the digital read-out are redrawn each frame.
+        """
+        surf = pygame.Surface((int(THERMO_SIZE_PX[0]), int(THERMO_SIZE_PX[1])))
+        surf.fill(BLACK)
+
+        title = self.thermo_title_font.render("FUEL TEMPERATURE", True, GREEN)
+        surf.blit(title, (surf.get_width() // 2 - title.get_width() // 2, 12))
+
+        # Coloured zone arc: green up to the warning temp, amber to the scram temp, red past it.
+        for t0, t1, colour in ((DIAL_MIN_C, DIAL_WARN_C, GREEN),
+                               (DIAL_WARN_C, DIAL_RED_C, AMBER),
+                               (DIAL_RED_C, DIAL_MAX_C, RED)):
+            a0, a1 = self._temp_to_angle(t0), self._temp_to_angle(t1)
+            n = max(2, int((a1 - a0) / math.radians(3)))
+            pts = [self._dial_point(a0 + (a1 - a0) * i / n, self.thermo_radius) for i in range(n + 1)]
+            pygame.draw.lines(surf, colour, False, pts, 10)
+
+        # Tick marks + labels every 200 C.
+        t = DIAL_MIN_C
+        while t <= DIAL_MAX_C:
+            a = self._temp_to_angle(t)
+            pygame.draw.line(surf, WHITE, self._dial_point(a, self.thermo_radius - 16),
+                             self._dial_point(a, self.thermo_radius), 2)
+            label = self.thermo_tick_font.render(str(t), True, WHITE)
+            lx, ly = self._dial_point(a, self.thermo_radius - 36)
+            surf.blit(label, (lx - label.get_width() // 2, ly - label.get_height() // 2))
+            t += 200
+
+        note = self.thermo_note_font.render(f"SCRAM AT {config.SCRAM_TEMPERATURE_C} C", True, RED)
+        surf.blit(note, (surf.get_width() // 2 - note.get_width() // 2,
+                         self.thermo_center[1] + self.thermo_radius + 74))
+
+        self.thermo_static = surf
+
+    def _draw_thermometer(self, temp):
+        surf = self.thermo_surface
+        surf.blit(self.thermo_static, (0, 0))
+        zone = self._temp_zone_color(temp)
+
+        # Needle from the hub to the current temperature.
+        tip = self._dial_point(self._temp_to_angle(temp), self.thermo_radius - 22)
+        pygame.draw.line(surf, zone, self.thermo_center, tip, 4)
+        pygame.draw.circle(surf, WHITE, self.thermo_center, 9)
+        pygame.draw.circle(surf, zone, self.thermo_center, 5)
+
+        # Digital read-out below the dial.
+        value = self.thermo_value_font.render(f"{temp:.0f} C", True, zone)
+        surf.blit(value, (surf.get_width() // 2 - value.get_width() // 2,
+                          self.thermo_center[1] + self.thermo_radius + 22))
+
+        self.screen.blit(surf, THERMO_ORIGIN_PX)
+
     def _draw_popup(self, message):
         # popup_surface is a fixed POPUP_WIDTH x POPUP_HEIGHT box, fully repainted and
         # blitted at the same fixed screen position every call, so a shorter message
@@ -889,6 +997,7 @@ class System:
         if self.pk_n_animation:
             self._init_graph()
             self._init_reactor_vessel()
+            self._init_thermometer()
         return self._game_loop()
 
     def _game_loop(self):
@@ -930,6 +1039,7 @@ class System:
 
             if not self.running and not victory_flag:
                 self.graph_start_time = time.time()
+                self.temperature = config.STARTING_TEMPERATURE_C
                 if self.pk_n_animation:
                     self._update_graph()
 
@@ -999,7 +1109,19 @@ class System:
                     self.time_at_target_condition += self.clock.get_time() / 1000.0
                 else:
                     at_target = False
-                    self.time_at_target_condition = 0.0                    
+                    self.time_at_target_condition = 0.0
+
+                # Fuel temperature: integrate the model's dT/dt each tick. Coolant mass
+                # flow is a base plus a bump per switch that's on; more flow cools the
+                # fuel faster. Power is MW in the game but the model works in SI, so it's
+                # converted to watts. Overheating past the scram temp trips an auto-SCRAM.
+                switches_on = sum(1 for on in self.panel_states.switch_states.values() if on)
+                mass_flow = config.BASE_MASS_FLOW_RATE + config.FLOW_RATE_PER_SWITCH * switches_on
+                temp_rate = self.temperature_model.rate_of_fuel_temperature_change(
+                    self.pk.n * 1e6, mass_flow, self.temperature)
+                self.temperature += temp_rate * (self.clock.get_time() / 1000.0)
+                if self.temperature > config.SCRAM_TEMPERATURE_C:
+                    self._trigger_scram(automatic=True)
 
                 if self.pk.n > self.FAILURE_POWER_MW:
                     self._trigger_scram(automatic=True)
@@ -1050,7 +1172,12 @@ class System:
 
             self._draw_fps()
             if self.pk_n_animation:
-                self._draw_leaderboard()
+                # The right column shows the live fuel-temperature dial during play;
+                # the leaderboard only takes it over once the game has been won.
+                if victory_flag:
+                    self._draw_leaderboard()
+                else:
+                    self._draw_thermometer(self.temperature)
                 # Safety (left lever) and regulating (mid lever) rods track their
                 # levers' effective (drawn-out) positions and are unaffected by a SCRAM.
                 # The scram rods sit withdrawn and only drop - fully, immediately -
