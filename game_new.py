@@ -9,7 +9,7 @@ import csv
 
 import config
 from point_kinetics import PointKinetics
-from temperatureModel import TemperatureModel
+from temperature_model import TemperatureModel
 
 environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"
 import pygame  # noqa: E402  (must import after PYGAME_HIDE_SUPPORT_PROMPT is set)
