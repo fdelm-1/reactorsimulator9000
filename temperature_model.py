@@ -7,7 +7,7 @@ class TemperatureModel:
 
     rod_diameter = config.ROD_DIAMETER
     rod_length = config.ROD_LENGTH
-    hydraulic_area = (1.26**2 - math.pi * ((rod_diameter/2)**2)) #in m^2
+    hydraulic_area = ((1.26*10^-2)**2 - math.pi * ((rod_diameter/2)**2)) #in m^2
     wetted_perimeter = math.pi * rod_diameter #in m
     number_of_rods = config.NUMBER_OF_RODS
 
