@@ -17,7 +17,6 @@ class TemperatureModel:
     FUEL_SPECIFIC_HEAT_CAPACITY = config.FUEL_SPECIFIC_HEAT_CAPACITY
     FUEL_ROD_HEAT_TRANSFER_AREA = config.FUEL_ROD_HEAT_TRANSFER_AREA
 
-    FUEL_ROD_HEAT_TRANSFER_AREA = 6 * math.pi * ((rod_diameter/2) ** 2)
     THERMAL_CONDUCTIVITY = 0.598 #of coolant
     FLOW_VISCOSITY = 8.833 * 10**-5 #of coolant
     FLOW_DENSITY = 727.9 #of coolant 
