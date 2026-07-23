@@ -184,7 +184,7 @@ class System:
     # The last LEVER_DEADZONE_FRACTION of travel at each end of a lever snaps to the
     # extreme (0 or 1), so a lever nudged almost-but-not-quite to an end still reads as
     # fully there rather than leaving a sliver of residual effect.
-    LEVER_DEADZONE_FRACTION = 0.075
+    LEVER_DEADZONE_FRACTION = config.LEVER_DEADZONE_FRACTION
 
     # Each lever's effect (on k_eff and on the diagram) chases its target position
     # rather than snapping, taking this many seconds to cross the full range - so a
