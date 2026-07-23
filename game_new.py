@@ -601,8 +601,8 @@ class System:
                 # converted to watts. Overheating past the scram temp trips an auto-SCRAM.
                 switches_on = sum(1 for on in self.panel_states.switch_states.values() if on)
                 mass_flow = config.BASE_MASS_FLOW_RATE + config.FLOW_RATE_PER_SWITCH * switches_on
-                temp_rate = self.temperature_model.rate_of_fuel_temperature_change(
-                    self.pk.n * 1e6, mass_flow, self.temperature)
+                temp_rate = self.temperature_model.fuel_temperature_rate(
+                    mass_flow, self.pk.n * 1e6, self.temperature)
                 self.temperature += temp_rate * (self.clock.get_time() / 1000.0)
                 if self.temperature > config.SCRAM_TEMPERATURE_C:
                     self._trigger_scram(automatic=True)
