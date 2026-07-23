@@ -63,10 +63,16 @@ SCRAM_AUTO_LOCK_MULTIPLIER = 2
 # drawn out rather than snapping instantly, like the control-rod levers.
 SCRAM_ROD_TRAVEL_TIME_S = 0.5
 
+# How much each kg/s of coolant mass flow subtracts from k_eff - a game-balance
+# trade-off for running the pumps harder to cool faster: k_eff drop =
+# MASS_FLOW_K_EFF_COEFFICIENT * mass_flow_rate.
+MASS_FLOW_K_EFF_COEFFICIENT = 5e-6
+
 # -- TEMP CONTROL ------------------------------------------------------
 
 # Coolant mass flow rate (kg/s): a base amount, plus an increment for each panel
-# switch that is turned on. More flow removes more heat, so it cools the fuel faster.
+# switch that is turned on. More flow removes more heat, so it cools the fuel faster
+# - but also costs some reactivity, via MASS_FLOW_K_EFF_COEFFICIENT above.
 BASE_MASS_FLOW_RATE = 375
 FLOW_RATE_PER_SWITCH = 125
 
