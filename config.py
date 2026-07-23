@@ -65,24 +65,12 @@ SCRAM_ROD_TRAVEL_TIME_S = 0.5
 
 # -- TEMP CONTROL ------------------------------------------------------
 
-ROD_DIAMETER = 0.0108
-ROD_LENGTH = 6
-NUMBER_OF_RODS = 52*17*17
-
-FUEL_ROD_MASS = 10400 * math.pi * ((ROD_DIAMETER/2)**2) * ROD_LENGTH
-FUEL_SPECIFIC_HEAT_CAPACITY = 300
-# Lateral (curved) surface area of a cylindrical rod: pi * diameter * length. Was
-# previously "6 * pi * (diameter/2)**2", which didn't use ROD_LENGTH at all and gave
-# an area ~370x too small - with too little surface to shed heat through, fuel
-# temperature could barely cool and got stuck pinned above the SCRAM temperature.
-FUEL_ROD_HEAT_TRANSFER_AREA = math.pi * (ROD_DIAMETER/2)**2 * ROD_LENGTH
-
 # Coolant mass flow rate (kg/s): a base amount, plus an increment for each panel
 # switch that is turned on. More flow removes more heat, so it cools the fuel faster.
-BASE_MASS_FLOW_RATE = 10000
-FLOW_RATE_PER_SWITCH = 5000
+BASE_MASS_FLOW_RATE = 375
+FLOW_RATE_PER_SWITCH = 125
 
 # Fuel temperature (deg C): the reactor starts here, and an automatic SCRAM fires if
 # the temperature ever climbs above the scram temperature.
-STARTING_TEMPERATURE_C = 800
-SCRAM_TEMPERATURE_C = 1400
+STARTING_TEMPERATURE_C = 1100
+SCRAM_TEMPERATURE_C = 1600
