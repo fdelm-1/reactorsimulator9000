@@ -22,8 +22,7 @@ class TemperatureModel:
     FLOW_VISCOSITY = 8.833 * 10**-5 #of coolant
     FLOW_DENSITY = 727.9 #of coolant 
     FLOW_TEMPERATURE = 300 #of coolant 
-
-    PRANDTL_NUMBER = (FLOW_VISCOSITY * FUEL_SPECIFIC_HEAT_CAPACITY) / THERMAL_CONDUCTIVITY
+    PRANDTL_NUMBER = 0.862
 
     def __init__(self):
         pass
@@ -36,9 +35,6 @@ class TemperatureModel:
     
     def _flow_reynolds_number(self, flow_density, free_stream_velocity, hydraulic_diameter, flow_viscosity):
         return (flow_density * free_stream_velocity * hydraulic_diameter) / flow_viscosity
-    
-    def _prandtl_number(self, flow_viscosity, specific_heat_capacity, thermal_conductivity):
-        return (flow_viscosity * specific_heat_capacity) / thermal_conductivity
     
     def _heat_transfer_coefficient(self, flow_reynolds_number, prandtl_number, thermal_conductivity, hydraulic_diameter):
         return (0.023 * (flow_reynolds_number ** 0.8) * (prandtl_number ** 0.4) * thermal_conductivity) / hydraulic_diameter
