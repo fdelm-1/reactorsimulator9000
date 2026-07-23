@@ -1,6 +1,7 @@
 import math
 import time
 import config
+import random
 
 class TemperatureModel:
 
@@ -15,7 +16,7 @@ class TemperatureModel:
     FUEL_ROD_MASS = config.FUEL_ROD_MASS
     FUEL_SPECIFIC_HEAT_CAPACITY = config.FUEL_SPECIFIC_HEAT_CAPACITY
     FUEL_ROD_HEAT_TRANSFER_AREA = config.FUEL_ROD_HEAT_TRANSFER_AREA
-    
+
     FUEL_ROD_HEAT_TRANSFER_AREA = 6 * math.pi * ((rod_diameter/2) ** 2)
     THERMAL_CONDUCTIVITY = 0.598 #of coolant
     FLOW_VISCOSITY = 8.833 * 10**-5 #of coolant
@@ -57,8 +58,21 @@ class TemperatureModel:
         
 
 if __name__ == "__main__":
-    model = TemperatureModel()
-    time1 = time.time()
-    print(model.rate_of_fuel_temperature_change(1000000, 0.1, 300))
+    mode = input("Enter mode: ")
 
-    print("Time taken: ", time.time() - time1)
+
+    model = TemperatureModel()
+    times_taken = []
+
+    for i in range(100):
+        time1 = time.time()
+        print(model.rate_of_fuel_temperature_change(random.uniform(900000, 1100000), random.uniform(0.05, 0.15), random.uniform(300, 600)))
+
+        print("Time taken: ", time.time() - time1)
+        times_taken.append(time.time() - time1)
+
+    print("Average time taken: ", sum(times_taken)/len(times_taken))
+    print("Max time taken: ", max(times_taken))
+    print("Min time taken: ", min(times_taken))
+    print("Total time taken: ", sum(times_taken))
+    print("Number of iterations: ", len(times_taken))
