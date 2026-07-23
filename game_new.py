@@ -82,6 +82,10 @@ class System:
     # _advance_scram_rods.
     SCRAM_ROD_TRAVEL_TIME_S = config.SCRAM_ROD_TRAVEL_TIME_S
 
+    # How much each kg/s of coolant mass flow subtracts from k_eff - see
+    # _current_mass_flow_rate and where self.k_eff is finalised in _game_loop.
+    MASS_FLOW_K_EFF_COEFFICIENT = config.MASS_FLOW_K_EFF_COEFFICIENT
+
     # How long (seconds) the left button (pumps) must be held before the pumps
     # count as spun up - see the startup-sequence handling in _game_loop.
     LEFT_BUTTON_HOLD_TO_START_S = config.LEFT_BUTTON_HOLD_TO_START_S
@@ -236,6 +240,14 @@ class System:
         else:
             self.scram_rod_insertion += math.copysign(max_step, diff)
 
+    def _current_mass_flow_rate(self):
+        """Coolant mass flow rate (kg/s): a base amount plus a bump per switch that's
+        currently on. Shared by the temperature model and the k_eff mass-flow penalty
+        (see where self.k_eff is finalised in _game_loop).
+        """
+        switches_on = sum(1 for on in self.panel_states.switch_states.values() if on)
+        return config.BASE_MASS_FLOW_RATE + config.FLOW_RATE_PER_SWITCH * switches_on
+
     # -- Setup -----------------------------------------------------------
 
     def _init_display(self):
@@ -304,13 +316,16 @@ class System:
 
     def _update_graph(self):
         elapsed = time.time() - self.graph_start_time
-        is_max_k_eff = self.k_eff == self.max_allowable_k_eff
+        # "MAXIMUM!" reflects the lever/keyboard input being pinned at its own ceiling
+        # (pygame_k_eff), not the final k_eff - which, with the mass-flow penalty now
+        # part of it, has no single fixed maximum (it depends on how many pumps are on).
+        is_max_k_eff = self.pygame_k_eff == self.max_allowable_k_eff
         self.graph.render_live(elapsed, self._display_power(), self.k_eff, is_max_k_eff,
                                 self.time_at_target_condition)
         self.graph.blit_to(self.screen)
 
     def _draw_final_graph(self):
-        is_max_k_eff = self.k_eff == self.max_allowable_k_eff
+        is_max_k_eff = self.pygame_k_eff == self.max_allowable_k_eff
         self.graph.render_final(self.final_elapsed_time, self._display_power(), self.k_eff,
                                  is_max_k_eff, self.time_at_target_condition)
         self.graph.blit_to(self.screen)
@@ -597,12 +612,12 @@ class System:
 
                 # Fuel temperature: integrate the model's dT/dt each tick. Coolant mass
                 # flow is a base plus a bump per switch that's on; more flow cools the
-                # fuel faster. Power is MW in the game but the model works in SI, so it's
-                # converted to watts. Overheating past the scram temp trips an auto-SCRAM.
-                switches_on = sum(1 for on in self.panel_states.switch_states.values() if on)
-                mass_flow = config.BASE_MASS_FLOW_RATE + config.FLOW_RATE_PER_SWITCH * switches_on
+                # fuel faster (at the cost of some reactivity - see where self.k_eff is
+                # finalised below). Power is MW in the game but the model works in SI, so
+                # it's converted to watts. Overheating past the scram temp trips an
+                # auto-SCRAM.
                 temp_rate = self.temperature_model.fuel_temperature_rate(
-                    mass_flow, self.pk.n * 1e6, self.temperature)
+                    self._current_mass_flow_rate(), self.pk.n * 1e6, self.temperature)
                 self.temperature += temp_rate * (self.clock.get_time() / 1000.0)
                 if self.temperature > config.SCRAM_TEMPERATURE_C:
                     self._trigger_scram(automatic=True)
@@ -652,7 +667,12 @@ class System:
                 self.pygame_k_eff -= self.inc if self.lowering_rod else 0
                 self.pygame_k_eff = min(max(self.MIN_ALLOWABLE_K_EFF, self.pygame_k_eff), self.max_allowable_k_eff)
 
-            self.k_eff = self.pygame_k_eff
+            # k_eff is the lever/keyboard-driven value (pygame_k_eff, already dropped by
+            # SCRAM_K_EFF_DROP and locked for the duration of a SCRAM above) further
+            # reduced by the coolant mass flow rate - pushing more coolant through costs
+            # some reactivity. Applied after pygame_k_eff's own clamping, so - like the
+            # SCRAM drop - it can legitimately push k_eff below MIN_ALLOWABLE_K_EFF.
+            self.k_eff = self.pygame_k_eff - self.MASS_FLOW_K_EFF_COEFFICIENT * self._current_mass_flow_rate()
 
             self._draw_fps()
             if self.pk_n_animation:
