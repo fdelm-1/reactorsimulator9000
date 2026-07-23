@@ -717,7 +717,18 @@ class System:
     def run_pk(self):
         while self.running:
             t_start = time.monotonic()
-            self.pk.step(self.frame_time, self.k_eff, method="implicit_heun")
+            # backwards_euler, not implicit_heun: a SCRAM (or a lowered lever, or high
+            # mass flow) can drop k_eff far enough below 1 that, combined with the very
+            # short prompt neutron lifetime, the step is numerically stiff.
+            # implicit_heun's corrector is an explicit update from an implicit
+            # predictor, so - despite the name - it isn't actually unconditionally
+            # stable: past a certain stiffness it diverges into a wildly growing,
+            # sign-flipping oscillation each frame (verified numerically - a SCRAM from
+            # a high-power state blows up within ~100 steps). Plain backwards_euler is
+            # unconditionally stable for this linear system, so it stays well-behaved
+            # (a smooth decay) at any k_eff, at the cost of being first- rather than
+            # second-order accurate - immaterial for a real-time, frame-driven sim.
+            self.pk.step(self.frame_time, self.k_eff, method="backwards_euler")
             t_end = time.monotonic()
             sleep_length = max(0.0, self.frame_time - (t_end - t_start))
             time.sleep(sleep_length)
