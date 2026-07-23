@@ -64,13 +64,6 @@ class PointKinetics:
     def reset_sol(self):
         self.sol = self.initial_solution
 
-    def scale_solution(self, factor):
-        """Uniformly rescale every precursor population and n by factor, keeping
-        their relative equilibrium ratios. Used to apply an instantaneous SCRAM
-        power cut rather than modelling rod insertion as a continuous transient.
-        """
-        self.sol = self.sol * factor
-    
     def enable_n_history(self, back_duration, dt):
         self.n_history = True
         self.n_history_time_window  = np.arange(0, back_duration + dt, dt) * -1

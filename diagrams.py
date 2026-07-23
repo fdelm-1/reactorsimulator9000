@@ -161,11 +161,13 @@ class GraphRenderer:
         band.fill((*color_rgb, alpha))
         surface.blit(band, (plot_rect.left, y_top))
 
-    def _draw_hatched_band(self, surface, mw_low, mw_high, color_rgb, alpha,
+    def _draw_hatched_band(self, surface, mw_low, mw_high, color_rgb, alpha, x_phase=0,
                             spacing=WARNING_ZONE_HATCH_SPACING_PX, line_width=WARNING_ZONE_HATCH_WIDTH_PX):
         """Same region as _draw_translucent_band, but filled with diagonal "\" stripes
         instead of a solid colour, so it reads as a hazard-stripe warning rather than
-        a plain block.
+        a plain block. x_phase shifts the whole stripe pattern left by that many
+        pixels (mod spacing, so the shift stays cheap over a long session) - used to
+        make the stripes scroll in lock-step with the graph's time axis.
         """
         plot_rect = self.plot_rect
         y_top = max(self._mw_to_px(mw_high), plot_rect.top)
@@ -179,7 +181,7 @@ class GraphRenderer:
         # height to the left of the surface (and continuing to its right edge)
         # ensures stripes still reach the surface's left/bottom corner instead of
         # leaving it blank.
-        x = -height
+        x = -height - (x_phase % spacing)
         while x < width:
             pygame.draw.line(band, color, (x, 0), (x + height, height), line_width)
             x += spacing
@@ -196,8 +198,9 @@ class GraphRenderer:
 
         self._draw_translucent_band(bg, self.target_lower_mw, self.target_upper_mw,
                                      GREEN, TARGET_ZONE_ALPHA)
-        self._draw_hatched_band(bg, self.target_upper_mw, self.failure_mw,
-                                 AMBER, WARNING_ZONE_ALPHA)
+        # The warning zone's hazard stripes are drawn dynamically each frame instead
+        # (see _render) so they can scroll with the time axis, rather than being
+        # baked into this static background.
         self._draw_translucent_band(bg, self.failure_mw,
                                      min(self.failure_zone_top_mw, self.Y_AXIS_MAX_MW),
                                      RED, FAILURE_ZONE_ALPHA)
@@ -249,6 +252,16 @@ class GraphRenderer:
         surface = self.surface
         plot_rect = self.plot_rect
         surface.blit(self.static_bg, (0, 0))
+
+        # Slide the warning zone's hazard stripes left in lock-step with the
+        # scrolling time axis: 1 second of window time is always
+        # plot_rect.width / window_span pixels, so that many pixels of phase
+        # shift per second of window_start makes the stripes track the same
+        # motion as the gridlines/power line below.
+        window_span = window_end - window_start
+        phase = (window_start * plot_rect.width / window_span) if window_span > 0 else 0
+        self._draw_hatched_band(surface, self.target_upper_mw, self.failure_mw,
+                                 AMBER, WARNING_ZONE_ALPHA, x_phase=phase)
 
         # X gridlines + labels are the only dynamic part of the axes, since the
         # window slides/widens over time. Step adapts to the window's width so a
