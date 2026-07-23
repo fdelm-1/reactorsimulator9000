@@ -70,13 +70,21 @@ class System:
     LEVER_EFFECT_DELAY_S = config.LEVER_EFFECT_DELAY_S
 
     # SCRAM behaviour (manual or automatic - see _trigger_scram). Both immediately
-    # multiply the reactor's power by SCRAM_POWER_FACTOR and lock k_eff at
-    # MIN_ALLOWABLE_K_EFF; an automatic SCRAM (triggered by exceeding
-    # FAILURE_POWER_MW) holds the lock SCRAM_AUTO_LOCK_MULTIPLIER times longer than
-    # a manual one, since it represents a more severe, unplanned trip.
-    SCRAM_POWER_FACTOR = config.SCRAM_POWER_FACTOR
+    # subtract SCRAM_K_EFF_DROP from k_eff and lock it there; an automatic SCRAM
+    # (triggered by exceeding FAILURE_POWER_MW) holds the lock
+    # SCRAM_AUTO_LOCK_MULTIPLIER times longer than a manual one, since it represents
+    # a more severe, unplanned trip.
+    SCRAM_K_EFF_DROP = config.SCRAM_K_EFF_DROP
     SCRAM_LOCK_DURATION_S = config.SCRAM_LOCK_DURATION_S
     SCRAM_AUTO_LOCK_MULTIPLIER = config.SCRAM_AUTO_LOCK_MULTIPLIER
+
+    # How long (seconds) the scram rods take to fully lower/raise - see
+    # _advance_scram_rods.
+    SCRAM_ROD_TRAVEL_TIME_S = config.SCRAM_ROD_TRAVEL_TIME_S
+
+    # How long (seconds) the left button (pumps) must be held before the pumps
+    # count as spun up - see the startup-sequence handling in _game_loop.
+    LEFT_BUTTON_HOLD_TO_START_S = config.LEFT_BUTTON_HOLD_TO_START_S
 
     # Yellow LED window: a lever's own k_eff contribution counts as "neutral" (not
     # positive/negative) within +-0.0005 of 1.0, rather than requiring it to land on
@@ -185,19 +193,48 @@ class System:
                 self.effective_lever_pos[i] += math.copysign(max_step, diff)
 
     def _trigger_scram(self, automatic):
-        """SCRAM: immediately cut the reactor's power and lock k_eff at its minimum,
+        """SCRAM: immediately drop k_eff by SCRAM_K_EFF_DROP and lock it there,
         ignoring lever/rod input, until the lock expires (see the per-frame handling
-        in _game_loop). Guarded by self.scramming so re-triggering (e.g. holding
-        SPACE, or staying above FAILURE_POWER_MW for multiple frames before the power
-        cut takes effect) doesn't restack the lock or repeatedly halve the power.
+        in _game_loop) - the resulting power drop plays out through the point-
+        kinetics model itself rather than being forced directly. Also engages the
+        scram rods (see _advance_scram_rods), which stay down even after the lock
+        expires until the operator confirms safe by fully lowering every lever.
+        Guarded by self.scramming so re-triggering (e.g. holding SPACE, or staying
+        above FAILURE_POWER_MW for multiple frames before the drop takes effect)
+        doesn't restack the lock or repeatedly drop k_eff further.
         """
         if self.scramming:
             return
         self.scramming = True
-        self.pk.scale_solution(self.SCRAM_POWER_FACTOR)
-        self.pygame_k_eff = self.MIN_ALLOWABLE_K_EFF
+        self.scram_rods_engaged = True
+        self.scram_locked_k_eff = self.pygame_k_eff - self.SCRAM_K_EFF_DROP
+        self.pygame_k_eff = self.scram_locked_k_eff
         multiplier = self.SCRAM_AUTO_LOCK_MULTIPLIER if automatic else 1
         self.scram_lock_remaining_s = self.SCRAM_LOCK_DURATION_S * multiplier
+
+    def _advance_scram_rods(self, dt):
+        """Scram rods drop the instant a SCRAM triggers and stay down - even after
+        the SCRAM's k_eff lock/cooldown ends - until the operator has manually
+        pushed every lever fully down, confirming the reactor is safe to bring the
+        rods back out. Both the drop and the raise are drawn out over
+        SCRAM_ROD_TRAVEL_TIME_S rather than snapping instantly, same technique as
+        _advance_effective_levers.
+        """
+        if self.scram_rods_engaged and not self.scramming:
+            if all(pos >= 1.0 for pos in self.effective_lever_pos):
+                self.scram_rods_engaged = False
+
+        target = 1.0 if self.scram_rods_engaged else 0.0
+        delay = self.SCRAM_ROD_TRAVEL_TIME_S
+        if delay <= 0:
+            self.scram_rod_insertion = target
+            return
+        max_step = dt / delay
+        diff = target - self.scram_rod_insertion
+        if abs(diff) <= max_step:
+            self.scram_rod_insertion = target
+        else:
+            self.scram_rod_insertion += math.copysign(max_step, diff)
 
     # -- Setup -----------------------------------------------------------
 
@@ -218,6 +255,15 @@ class System:
         self.lowering_rod = False
         self.scramming = False
         self.scram_lock_remaining_s = 0.0
+        self.scram_locked_k_eff = self.BASE_K_EFF
+        self.scram_rods_engaged = False
+        self.scram_rod_insertion = 0.0
+
+        # Startup sequence: hold the left button (pumps) for LEFT_BUTTON_HOLD_TO_START_S
+        # to spin the pumps up, then press right to start the reactor. Pumps stay
+        # "on" once activated even if left is released.
+        self.left_button_press_time = None
+        self.pumps_activated = False
 
         # Tied to the levers' real combined ceiling so pygame_k_eff is never clamped
         # short of what the levers can actually produce, and "MAXIMUM!" can display.
@@ -279,7 +325,14 @@ class System:
         self.pump_panel = diagrams.PumpPanelRenderer()
 
     def _draw_pump_panel(self):
-        self.pump_panel.draw(self.screen, self.panel_states.switch_states)
+        # The panel only shows a switch as "on" once the pumps have actually spun
+        # up (left button held for LEFT_BUTTON_HOLD_TO_START_S) - before that, every
+        # box reads off regardless of the physical switch position.
+        if self.pumps_activated:
+            display_states = self.panel_states.switch_states
+        else:
+            display_states = {name: False for name in self.panel_states.switch_states}
+        self.pump_panel.draw(self.screen, display_states)
 
     def _init_thermometer(self):
         self.thermometer = diagrams.ThermometerRenderer()
@@ -448,15 +501,25 @@ class System:
             # effective_lever_pos lags the real levers and is what actually drives
             # k_eff and the rod/shim diagram. clock.get_time() is the previous frame's
             # real duration in ms (see the time_at_target comment further down).
-            self._advance_effective_levers(lever_rel_pos, self.clock.get_time() / 1000.0)
+            frame_dt = self.clock.get_time() / 1000.0
+            self._advance_effective_levers(lever_rel_pos, frame_dt)
+            self._advance_scram_rods(frame_dt)
 
-            ##!! To start the game: check if both buttons are pressed and all switches are on
-            if self.panel_states.button_states["left_button"] and self.panel_states.button_states["right_button"]:
-                if all(self.panel_states.switch_states.values()):
-                    self.screen.fill(BLACK)
-                    if not self.running:
-                        self.running = True
-                        self.start_simulation()
+            ##!! Startup sequence: hold left (pumps) for LEFT_BUTTON_HOLD_TO_START_S,
+            ## then press right (reactor) to start. Pumps latch "on" once activated -
+            ## releasing left afterwards doesn't undo it.
+            if self.panel_states.button_states["left_button"]:
+                if self.left_button_press_time is None:
+                    self.left_button_press_time = time.time()
+                elif time.time() - self.left_button_press_time >= self.LEFT_BUTTON_HOLD_TO_START_S:
+                    self.pumps_activated = True
+            else:
+                self.left_button_press_time = None
+
+            if not self.running and self.pumps_activated and self.panel_states.button_states["right_button"]:
+                self.screen.fill(BLACK)
+                self.running = True
+                self.start_simulation()
 
             if not self.running and not victory_flag:
                 self.graph_start_time = time.time()
@@ -581,7 +644,7 @@ class System:
                 # ms - see the time_at_target_condition comment above for why the
                 # nominal frame_time isn't used instead.
                 self.scram_lock_remaining_s -= self.clock.get_time() / 1000.0
-                self.pygame_k_eff = self.MIN_ALLOWABLE_K_EFF
+                self.pygame_k_eff = self.scram_locked_k_eff
                 if self.scram_lock_remaining_s <= 0.0:
                     self.scramming = False
             else:
@@ -603,14 +666,16 @@ class System:
                     self._draw_thermometer(self.temperature)
                 # Safety (left lever) and regulating (mid lever) rods track their
                 # levers' effective (drawn-out) positions and are unaffected by a SCRAM.
-                # The scram rods sit withdrawn and only drop - fully, immediately -
-                # while a SCRAM lock is active (self.scramming). The right lever is now
-                # chemical shim: its effective position reddens the coolant.
+                # The scram rods track scram_rod_insertion, which drops on a SCRAM and
+                # only raises again once _advance_scram_rods' reset conditions are met
+                # (see that method) - both drawn out over SCRAM_ROD_TRAVEL_TIME_S rather
+                # than snapping instantly. The right lever is now chemical shim: its
+                # effective position reddens the coolant.
                 eff = self.effective_lever_pos
                 rod_insertions = {
                     "safety": min(max(eff[0], 0.0), 1.0),
                     "regulating": min(max(eff[1], 0.0), 1.0),
-                    "scram": 1.0 if self.scramming else 0.0,
+                    "scram": self.scram_rod_insertion,
                 }
                 shim_fraction = min(max(eff[2], 0.0), 1.0)
                 power_fraction = min(max(self.pk.n / self.FAILURE_POWER_MW, 0.0), 1.0)

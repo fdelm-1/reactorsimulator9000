@@ -14,6 +14,13 @@ GRID = (90, 90, 90)      # #5A5A5A
 
 LEVER_DEADZONE_FRACTION = 0.075
 
+# How long (seconds) the left button (pumps) must be held continuously before
+# the pumps count as spun up - both for the pump-panel display and as the
+# first step of the two-step startup sequence (hold left, then press right to
+# start the reactor). Once reached, the pumps stay "on" even if left is
+# released - it isn't reset by letting go.
+LEFT_BUTTON_HOLD_TO_START_S = 2.0
+
 # -- GAME BALANCE --------------------------------------------------------
 
 TARGET_POWER_MW = 200
@@ -37,17 +44,24 @@ LEVER_EFFECT_DELAY_S = [2.5, 1.2, 0.5]
 
 # -- SCRAM --------------------------------------------------------------
 
-# A SCRAM (manual or automatic) immediately multiplies the reactor's power
-# by this factor.
-SCRAM_POWER_FACTOR = 0.5
+# A SCRAM (manual or automatic) immediately subtracts this much from k_eff -
+# standing in for the scram rods dropping fully into the core - rather than
+# directly cutting the reactor's power; the resulting power drop plays out
+# through the point-kinetics model itself instead of being forced.
+SCRAM_K_EFF_DROP = 0.1
 
-# How long (seconds) a manually triggered SCRAM locks k_eff at its minimum
-# before returning control to the player.
+# How long (seconds) a manually triggered SCRAM locks k_eff at its
+# (SCRAM_K_EFF_DROP-reduced) value before returning control to the player.
 SCRAM_LOCK_DURATION_S = 2.0
 
 # An automatic SCRAM (triggered by exceeding FAILURE_POWER_MW) locks k_eff
 # for this many times longer than a manually triggered one.
 SCRAM_AUTO_LOCK_MULTIPLIER = 2
+
+# How long (seconds) the scram rods take to fully lower on a SCRAM, or to
+# fully raise once the reset conditions are met (see _advance_scram_rods) -
+# drawn out rather than snapping instantly, like the control-rod levers.
+SCRAM_ROD_TRAVEL_TIME_S = 0.5
 
 # -- TEMP CONTROL ------------------------------------------------------
 
