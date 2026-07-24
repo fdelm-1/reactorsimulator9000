@@ -74,9 +74,7 @@ On a desktop/laptop with no physical panel:
     python3 game_keyboard.py
 
 This runs the exact same game logic, but swaps in a keyboard-only stand-in
-control panel (see section 4.3). NOTE: see section 8 - keyboard input is
-currently broken by a bug in game_new.py, so this entry point cannot
-currently be used to actually play; see that section before relying on it.
+control panel (see section 4.3).
 
 Both entry points loop forever, starting a brand new game (a fresh System /
 WindowsSystem object) every time you restart, until you quit.
@@ -245,8 +243,7 @@ need to withdraw a lever slightly to compensate for turning more pumps on
   These are handled by pygame's own keyboard events, independently of the
   physical panel, so they work identically whether you're running
   game_new.py on the Pi (e.g. with a keyboard plugged in) or game_keyboard.py
-  on a desktop. See section 8 for an important caveat - as committed, these
-  currently do not work at all.
+  on a desktop.
 
   T           - Start the game (only while not already running). This is
                 the keyboard equivalent of the right-button start sequence,
@@ -258,9 +255,7 @@ need to withdraw a lever slightly to compensate for turning more pumps on
   S or Down   - Hold to lower k_eff (same caveat as above).
   4           - Restart the game immediately (works whether running or not).
   L           - Clear the leaderboard (raw_scores.csv).
-  Q           - Intended to quit without restarting - see the bug noted in
-                section 8; as committed this key (and every other key)
-                crashes the game instead.
+  Q           - Quit without restarting.
   Window close (X) - Quits normally.
 
 4.3  Desktop-only behaviour (game_keyboard.py)
@@ -595,24 +590,11 @@ See section 5 above for the wiring/calibration details. Classes/functions:
 8. KNOWN ISSUES / QUIRKS
 ==============================================================================
 
-  - CRASH ON ANY KEYPRESS: game_new.py's KEYDOWN handler starts with
-    "if event.key in (pygame.K_q):" - the missing trailing comma means
-    (pygame.K_q) is just an int, not a one-item tuple, so "x in <int>"
-    raises TypeError. Because this is the first check run for every KEYDOWN
-    event (not just Q), pressing ANY key while the game is running will
-    currently crash it. This breaks every keyboard binding in section 4.2,
-    including starting the game with T - so as committed, game_keyboard.py's
-    desktop/keyboard mode cannot actually be used to play. The physical
-    control panel is unaffected (its inputs go through panel_states, not
-    pygame keyboard events), so this only bites when a keyboard is involved.
-
-  - The on-screen quit/restart popup text ("Press 3D/B to quit or 1D/4 to
-    restart...") is out of date - it doesn't match any current key or
-    button binding (the real keys are Q to quit and 4 to restart). The
-    popup itself is also only ever shown once, immediately after a win
-    (replacing the name-entry prompt) - the show_quit_popup flag that
-    otherwise gates it is initialised False and never set True anywhere in
-    the current code, so that path is effectively dead.
+  - The on-screen quit/restart popup ("Press Q to quit or 4 to restart...")
+    is only ever shown once, immediately after a win (replacing the
+    name-entry prompt) - the show_quit_popup flag that otherwise gates it is
+    initialised False and never set True anywhere in the current code, so
+    that path is effectively dead.
 
   - Lever LEDs are wired up to show green for a "positive" contribution to
     k_eff, but no lever can ever raise k_eff above baseline (every
@@ -628,6 +610,16 @@ See section 5 above for the wiring/calibration details. Classes/functions:
     self.complexity_level, but nothing else in the codebase reads it - it's
     currently a no-op, presumably reserved for a difficulty feature that
     hasn't been built yet.
+
+  - PointKinetics.step()'s "implicit_heun" method is not used by the game
+    (run_pk() always passes method="backwards_euler") - despite its name,
+    implicit_heun's corrector step is explicit, so it isn't unconditionally
+    stable: at the reactivity swings a SCRAM produces (combined with the
+    reactor's very short prompt neutron lifetime), it diverges into a wildly
+    growing, sign-flipping oscillation within about 100 steps. backwards_euler
+    is unconditionally stable at any k_eff, at the cost of being first-order
+    rather than second-order accurate - immaterial for a real-time,
+    frame-driven simulation. See the comment on run_pk() in game_new.py.
 
   - raw_scores.csv ships with one sample row ("felix, 128903") that does not
     match the format _record_score() actually writes (elapsed-time-in-

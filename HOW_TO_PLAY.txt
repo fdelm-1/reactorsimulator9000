@@ -1,0 +1,102 @@
+==============================================================================
+REACTOR SIMULATOR 9000 - QUICK START
+==============================================================================
+
+This is a short, step-by-step guide to actually playing the game. For full
+details (controls reference, hardware wiring, config tuning, code layout)
+see README.txt instead - this file is just the play-through steps.
+
+
+STEP 1 - START THE PUMPS
+----------------------------
+  1. Turn ON all five coolant-pump switches.
+  2. Press and HOLD the LEFT button for 2 seconds.
+  3. Check the "COOLANT PUMPS" panel above the graph - all five boxes
+     should now be lit green. You can let go of the left button now.
+
+  (If you don't see green boxes, a switch was off during the hold - turn
+  them all on and hold the left button again.)
+
+
+STEP 2 - BRING THE REACTOR CRITICAL
+----------------------------------------
+  1. Push all three levers (safety, regulating, chemical shim) all the way
+     DOWN.
+  2. Press the RIGHT button.
+  3. The reactor should now start - the graph, vessel diagram and dial will
+     come to life.
+
+
+STEP 3 - RAISE POWER TOWARDS THE TARGET
+--------------------------------------------
+  The reactor starts fully shut down (all rods in), so power will sit near
+  zero until you withdraw rods. Slowly pull the levers back UP (safety and
+  regulating levers do most of the work; the chemical-shim lever is a
+  smaller, faster trim) and watch the power line on the graph climb.
+
+  Aim for the GREEN band on the graph (192-208 MW by default). Go gently -
+  it's easy to overshoot.
+
+
+STEP 4 - HOLD IT THERE
+----------------------------
+  Once the power line is inside the green band, watch the "Time at target"
+  readout on the graph. It counts up while you're inside the band and resets
+  to zero the moment you leave it - so you need 5 unbroken seconds inside
+  the band to win, not 5 seconds total.
+
+  Make small lever adjustments to stay inside the band rather than large
+  ones - large moves are what cause you to overshoot back out of it.
+
+
+STEP 5 - WATCH THE WARNINGS
+--------------------------------
+  While holding position, keep an eye on:
+    - The power graph's amber/red bands - if power gets too high, the
+      reactor SCRAMs automatically.
+    - The "TEMPERATURE WARNING" banner above the dial - if it starts
+      flashing, fuel temperature is getting close to its own automatic
+      SCRAM limit. Turning on more pumps cools things down, but very
+      slightly reduces k_eff (power-raising ability) too.
+
+  If a SCRAM happens (automatic or by pressing the left button/SPACE
+  yourself): the reactor is not dead, but the SCRAM rods slam in and you
+  lose k_eff. To recover: push all three levers all the way back down and
+  wait a few seconds - only once BOTH of those are true does control return
+  to you and the SCRAM rods start withdrawing again. Then go back to step 3.
+
+
+STEP 6 - WIN
+----------------
+  Hold the power line inside the green band for a full 5 continuous seconds
+  and the reactor shuts down automatically. Type a name (up to 12
+  characters) and press Enter to save your time to the leaderboard, or press
+  Escape to clear what you've typed. Leaving the name blank when you press
+  Enter records "Anonymous" and does NOT save a leaderboard entry.
+
+
+STEP 7 - PLAY AGAIN
+------------------------
+  Press the RIGHT button (or '4' on a keyboard) to restart and try to beat
+  your time.
+
+
+==============================================================================
+QUICK REFERENCE
+==============================================================================
+  LEFT button (before start)  - hold 2s with all switches on: spin up pumps
+  LEFT button (while running) - manual SCRAM
+  RIGHT button (before start) - start the reactor (needs pumps on + all
+                                 switches on + all levers fully down)
+  RIGHT button (after a win, or while running) - restart
+
+  Levers UP   = no effect on power (k_eff at its highest)
+  Levers DOWN = reduce power (k_eff lower) - push down to control an
+                overshoot, or after a SCRAM to bring the lock back up
+
+  Keyboard equivalents (desktop / testing only):
+    T          - start the game directly
+    SPACE or 0 - manual SCRAM
+    W/S        - raise/lower power (only when lever control is off)
+    4          - restart
+    Q          - quit
