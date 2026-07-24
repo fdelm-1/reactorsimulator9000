@@ -78,5 +78,5 @@ FLOW_RATE_PER_SWITCH = 125
 
 # Fuel temperature (deg C): the reactor starts here, and an automatic SCRAM fires if
 # the temperature ever climbs above the scram temperature.
-STARTING_TEMPERATURE_C = 1100
-SCRAM_TEMPERATURE_C = 1600
+STARTING_TEMPERATURE_C = 650
+SCRAM_TEMPERATURE_C = 1050
