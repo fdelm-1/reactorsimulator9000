@@ -578,31 +578,24 @@ class System:
                     pygame_running = False
 
                 elif event.type == pygame.KEYDOWN:
-                    if event.key not in (pygame.K_4, pygame.K_b) and show_quit_popup:
-                        ##!! Cancel the popup
-                        show_quit_popup = False
-
-                    if event.key in (pygame.K_q, pygame.K_b):
+                    
+                    if event.key in (pygame.K_q):
                         self.running = False
                         pygame_running = False
                         restart_flag = False
 
-                    if event.key == pygame.K_1 and not self.running:
+                    if event.key == pygame.K_e and not self.running:
                         self.screen.fill((252, 186, 3))
 
                     if event.key in (pygame.K_SPACE, pygame.K_0):
                         if self.running:
                             self._trigger_scram(automatic=False)
 
-                    if event.key in (pygame.K_w, pygame.K_UP, pygame.K_2):
+                    if event.key in (pygame.K_w, pygame.K_UP):
                         self.lifting_rod = True
 
-                    if event.key in (pygame.K_s, pygame.K_DOWN, pygame.K_6):
+                    if event.key in (pygame.K_s, pygame.K_DOWN):
                         self.lowering_rod = True
-
-                    if event.key == pygame.K_8:
-                        ##!! Toggle using the levers, instead just use keypad
-                        use_levers_flag = not use_levers_flag
 
                     if event.key == pygame.K_4:
                         ##!! RESTART
@@ -610,7 +603,7 @@ class System:
                         self.running = False
                         pygame_running = False
 
-                    if event.key == pygame.K_d:
+                    if event.key == pygame.K_l:
                         ##!! Clear the leaderboard
                         self._clear_leaderboard()
 
@@ -621,10 +614,10 @@ class System:
                         self.running = True
                         self.start_simulation()
 
-                    if event.key in (pygame.K_w, pygame.K_UP, pygame.K_2):
+                    if event.key in (pygame.K_w, pygame.K_UP):
                         self.lifting_rod = False
 
-                    if event.key in (pygame.K_s, pygame.K_DOWN, pygame.K_6):
+                    if event.key in (pygame.K_s, pygame.K_DOWN):
                         self.lowering_rod = False
 
             ##--Apply updates
