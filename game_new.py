@@ -562,16 +562,16 @@ class System:
             self.left_button_was_pressed = left_button_pressed
 
             ##!! Right button: pre-game (and not just after a win), pressing it starts
-            ## the reactor - but only once the pumps are activated AND every lever
-            ## (safety, regulating, shim) is pushed fully down, confirming the reactor
-            ## safe to bring critical. Once running, or right after a win, a fresh press
-            ## instead restarts.
+            ## the reactor - but only once the pumps are activated, every pump switch
+            ## is currently on, AND every lever (safety, regulating, shim) is pushed
+            ## fully down, confirming the reactor safe to bring critical. Once running,
+            ## or right after a win, a fresh press instead restarts.
             right_button_pressed = self.panel_states.button_states["right_button"]
             right_button_just_pressed = right_button_pressed and not self.right_button_was_pressed
             if not self.running and not victory_flag:
                 levers_at_max = all(pos >= 1.0 for pos in self.effective_lever_pos)
-                if self.pumps_activated and levers_at_max and right_button_pressed:
-                    self.screen.fill(BLACK)
+                all_switches_on = all(self.panel_states.switch_states.values())
+                if self.pumps_activated and levers_at_max and all_switches_on and right_button_pressed:
                     self.running = True
                     self.start_simulation()
             elif right_button_just_pressed:
@@ -597,9 +597,6 @@ class System:
                         pygame_running = False
                         restart_flag = False
 
-                    if event.key == pygame.K_e and not self.running:
-                        self.screen.fill((252, 186, 3))
-
                     if event.key in (pygame.K_SPACE, pygame.K_0):
                         if self.running:
                             self._trigger_scram(automatic=False)
@@ -623,7 +620,6 @@ class System:
                 elif event.type == pygame.KEYUP:
                     if event.key == pygame.K_t and not self.running:
                         ##!! Start the game
-                        self.screen.fill((0, 50, 0))
                         self.running = True
                         self.start_simulation()
 
@@ -681,10 +677,7 @@ class System:
                 if not self.scramming and use_levers_flag:
                     self.update_pygame_keff_from_levers(self.effective_lever_pos, lever_origin_rel_pos)
 
-            if self.running:
-                self.screen.fill((0, 50, 0))
-            if self.scramming:
-                self.screen.fill((50, 0, 0))
+            self.screen.fill(BLACK)
 
             if self.pk_n_animation and self.running:
                 self._record_history_sample()
