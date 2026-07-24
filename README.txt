@@ -123,7 +123,7 @@ Once you hold it, the reactor shuts down automatically, the final graph
 freezes, and you're prompted to enter a name (up to 12 characters) for the
 leaderboard. Press Enter to submit (leaving the name blank records you as
 "Anonymous" and does NOT save a leaderboard entry), or Escape to clear what
-you've typed so far. Afterwards, press the RIGHT button (or '4' on a
+you've typed so far. Afterwards, press the RIGHT button (or 'R' on a
 keyboard) to play again.
 
 3.3  Controlling the reactor
@@ -253,7 +253,7 @@ need to withdraw a lever slightly to compensate for turning more pumps on
   W or Up     - Hold to raise k_eff (only has a visible effect when lever
                 control is turned off - see WindowsSystem in section 4.3).
   S or Down   - Hold to lower k_eff (same caveat as above).
-  4           - Restart the game immediately (works whether running or not).
+  R           - Restart the game immediately (works whether running or not).
   L           - Clear the leaderboard (raw_scores.csv).
   Q           - Quit without restarting.
   Window close (X) - Quits normally.
@@ -590,7 +590,7 @@ See section 5 above for the wiring/calibration details. Classes/functions:
 8. KNOWN ISSUES / QUIRKS
 ==============================================================================
 
-  - The on-screen quit/restart popup ("Press Q to quit or 4 to restart...")
+  - The on-screen quit/restart popup ("Press Q to quit or R to restart...")
     is only ever shown once, immediately after a win (replacing the
     name-entry prompt) - the show_quit_popup flag that otherwise gates it is
     initialised False and never set True anywhere in the current code, so
