@@ -708,10 +708,13 @@ class TempWarningRenderer:
             pygame.draw.rect(surf, RED, surf.get_rect(), 4)
             title = self.title_font.render("TEMPERATURE WARNING", True, RED)
             surf.blit(title, (surf.get_width() // 2 - title.get_width() // 2,
-                              surf.get_height() // 2 - title.get_height()))
-            note = self.note_font.render("SCRAM IMMINENT", True, RED)
+                              surf.get_height() // 2 - title.get_height() - 4))
+            # State the trigger threshold relative to the SCRAM temperature (this is
+            # the same threshold - DIAL_WARN_C - the thermometer itself turns amber at).
+            margin_c = config.SCRAM_TEMPERATURE_C - DIAL_WARN_C
+            note = self.note_font.render(f"{margin_c} C BELOW SCRAM ({config.SCRAM_TEMPERATURE_C} C)", True, RED)
             surf.blit(note, (surf.get_width() // 2 - note.get_width() // 2,
-                             surf.get_height() // 2 + 6))
+                             surf.get_height() // 2 + 4))
 
         screen.blit(surf, TEMP_WARNING_ORIGIN_PX)
 

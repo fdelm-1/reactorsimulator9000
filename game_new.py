@@ -86,16 +86,10 @@ class System:
     # _current_mass_flow_rate and where self.k_eff is finalised in _game_loop.
     MASS_FLOW_K_EFF_COEFFICIENT = config.MASS_FLOW_K_EFF_COEFFICIENT
 
-    # How long (seconds) the left button (pumps) must be held before the pumps
-    # count as spun up - see the startup-sequence handling in _game_loop.
+    # How long (seconds) the left button (pumps) must be held, with every pump
+    # switch on, before the pumps count as spun up - see the startup-sequence
+    # handling in _game_loop.
     LEFT_BUTTON_HOLD_TO_START_S = config.LEFT_BUTTON_HOLD_TO_START_S
-
-    # How long (seconds) the temperature-warning banner stays visible after the last
-    # time temperature was in the warning zone - the same duration as an automatic/
-    # over-power SCRAM's lock (SCRAM_LOCK_DURATION_S * SCRAM_AUTO_LOCK_MULTIPLIER)
-    # rather than a manual SCRAM's shorter one, so it holds steady instead of
-    # flickering as temperature bounces near the threshold.
-    TEMP_WARNING_MIN_HOLD_S = config.SCRAM_LOCK_DURATION_S * config.SCRAM_AUTO_LOCK_MULTIPLIER
 
     # Yellow LED window: a lever's own k_eff contribution counts as "neutral" (not
     # positive/negative) within +-0.0005 of 1.0, rather than requiring it to land on
@@ -274,13 +268,17 @@ class System:
         self.scram_rod_insertion = 0.0
 
         self.temp_warning_active = False
-        self.temp_warning_hold_remaining_s = 0.0
 
-        # Startup sequence: hold the left button (pumps) for LEFT_BUTTON_HOLD_TO_START_S
-        # to spin the pumps up, then press right to start the reactor. Pumps stay
-        # "on" once activated even if left is released.
+        # Startup sequence: hold the left button (pumps) for LEFT_BUTTON_HOLD_TO_START_S,
+        # gated on every pump switch being on, then press right (gated on all levers
+        # being fully down) to start the reactor. Pumps stay "on" once activated even
+        # if left is released. left/right_button_was_pressed track the previous frame's
+        # reading for edge-detecting a fresh press (see _game_loop): once the game is
+        # running, left instead triggers a manual SCRAM and right instead restarts.
         self.left_button_press_time = None
         self.pumps_activated = False
+        self.left_button_was_pressed = False
+        self.right_button_was_pressed = False
 
         # Tied to the levers' real combined ceiling so pygame_k_eff is never clamped
         # short of what the levers can actually produce.
@@ -367,20 +365,13 @@ class System:
     def _init_temp_warning(self):
         self.temp_warning = diagrams.TempWarningRenderer()
 
-    def _advance_temp_warning(self, dt):
-        """The warning goes active the instant temperature enters the thermometer's
-        own amber zone (diagrams.DIAL_WARN_C - the same threshold the dial itself
-        turns amber at), and stays active for at least TEMP_WARNING_MIN_HOLD_S after
-        the last time that was true, so it doesn't flicker on/off as temperature
-        hovers near the threshold.
+    def _update_temp_warning(self):
+        """Active exactly when temperature is in the thermometer's own amber zone
+        (diagrams.DIAL_WARN_C - the same threshold the dial itself turns amber at),
+        i.e. a temperature-triggered SCRAM is near. Tracks the live check each frame,
+        with no hold/hysteresis.
         """
-        if self.temperature >= diagrams.DIAL_WARN_C:
-            self.temp_warning_active = True
-            self.temp_warning_hold_remaining_s = self.TEMP_WARNING_MIN_HOLD_S
-        elif self.temp_warning_hold_remaining_s > 0.0:
-            self.temp_warning_hold_remaining_s -= dt
-            if self.temp_warning_hold_remaining_s <= 0.0:
-                self.temp_warning_active = False
+        self.temp_warning_active = self.temperature >= diagrams.DIAL_WARN_C
 
     def _draw_temp_warning(self):
         self.temp_warning.draw(self.screen, self.temp_warning_active)
@@ -551,21 +542,43 @@ class System:
             self._advance_effective_levers(lever_rel_pos, frame_dt)
             self._advance_scram_rods(frame_dt)
 
-            ##!! Startup sequence: hold left (pumps) for LEFT_BUTTON_HOLD_TO_START_S,
-            ## then press right (reactor) to start. Pumps latch "on" once activated -
-            ## releasing left afterwards doesn't undo it.
-            if self.panel_states.button_states["left_button"]:
-                if self.left_button_press_time is None:
-                    self.left_button_press_time = time.time()
-                elif time.time() - self.left_button_press_time >= self.LEFT_BUTTON_HOLD_TO_START_S:
-                    self.pumps_activated = True
+            ##!! Left button: pre-game, holding it for LEFT_BUTTON_HOLD_TO_START_S spins
+            ## the pumps up - but only counts while every pump switch is on. Pumps latch
+            ## "on" once activated - releasing left afterwards doesn't undo it. Once the
+            ## game is running, a fresh press instead triggers a manual SCRAM.
+            left_button_pressed = self.panel_states.button_states["left_button"]
+            if self.running:
+                if left_button_pressed and not self.left_button_was_pressed:
+                    self._trigger_scram(automatic=False)
             else:
-                self.left_button_press_time = None
+                all_switches_on = all(self.panel_states.switch_states.values())
+                if left_button_pressed and all_switches_on:
+                    if self.left_button_press_time is None:
+                        self.left_button_press_time = time.time()
+                    elif time.time() - self.left_button_press_time >= self.LEFT_BUTTON_HOLD_TO_START_S:
+                        self.pumps_activated = True
+                else:
+                    self.left_button_press_time = None
+            self.left_button_was_pressed = left_button_pressed
 
-            if not self.running and self.pumps_activated and self.panel_states.button_states["right_button"]:
-                self.screen.fill(BLACK)
-                self.running = True
-                self.start_simulation()
+            ##!! Right button: pre-game (and not just after a win), pressing it starts
+            ## the reactor - but only once the pumps are activated AND every lever
+            ## (safety, regulating, shim) is pushed fully down, confirming the reactor
+            ## safe to bring critical. Once running, or right after a win, a fresh press
+            ## instead restarts.
+            right_button_pressed = self.panel_states.button_states["right_button"]
+            right_button_just_pressed = right_button_pressed and not self.right_button_was_pressed
+            if not self.running and not victory_flag:
+                levers_at_max = all(pos >= 1.0 for pos in self.effective_lever_pos)
+                if self.pumps_activated and levers_at_max and right_button_pressed:
+                    self.screen.fill(BLACK)
+                    self.running = True
+                    self.start_simulation()
+            elif right_button_just_pressed:
+                restart_flag = True
+                self.running = False
+                pygame_running = False
+            self.right_button_was_pressed = right_button_pressed
 
             if not self.running and not victory_flag:
                 self.graph_start_time = time.time()
@@ -644,7 +657,7 @@ class System:
                     self._current_mass_flow_rate(), self.pk.n * 1e6, self.temperature)
                 self.temperature += temp_rate * (self.clock.get_time() / 1000.0)
                 if self.pk_n_animation:
-                    self._advance_temp_warning(self.clock.get_time() / 1000.0)
+                    self._update_temp_warning()
                 if self.temperature > config.SCRAM_TEMPERATURE_C:
                     self._trigger_scram(automatic=True)
 

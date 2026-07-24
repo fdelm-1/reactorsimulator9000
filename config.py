@@ -14,11 +14,12 @@ GRID = (90, 90, 90)      # #5A5A5A
 
 LEVER_DEADZONE_FRACTION = 0.075
 
-# How long (seconds) the left button (pumps) must be held continuously before
-# the pumps count as spun up - both for the pump-panel display and as the
-# first step of the two-step startup sequence (hold left, then press right to
-# start the reactor). Once reached, the pumps stay "on" even if left is
-# released - it isn't reset by letting go.
+# How long (seconds) the left button (pumps) must be held continuously - with
+# every pump switch already on - before the pumps count as spun up: both for the
+# pump-panel display and as the first step of the two-step startup sequence (hold
+# left, then press right - with every lever fully down - to start the reactor).
+# Once reached, the pumps stay "on" even if left is released - it isn't reset by
+# letting go.
 LEFT_BUTTON_HOLD_TO_START_S = 2.0
 
 # -- GAME BALANCE --------------------------------------------------------
