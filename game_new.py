@@ -516,7 +516,7 @@ class System:
         use_levers_flag = self.USE_LEVERS_BY_DEFAULT
         show_quit_popup = False
         restart_flag = False
-        quit_restart_message = "Press Q to quit\nor 4 to restart.\nAny other key to continue"
+        quit_restart_message = "Press Q to quit\nor R to restart.\nAny other key to continue"
 
         victory_flag = False
         at_target = False
@@ -607,7 +607,7 @@ class System:
                     if event.key in (pygame.K_s, pygame.K_DOWN):
                         self.lowering_rod = True
 
-                    if event.key == pygame.K_4:
+                    if event.key == pygame.K_r:
                         ##!! RESTART
                         restart_flag = True
                         self.running = False

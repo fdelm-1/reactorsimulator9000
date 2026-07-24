@@ -77,7 +77,7 @@ STEP 6 - WIN
 
 STEP 7 - PLAY AGAIN
 ------------------------
-  Press the RIGHT button (or '4' on a keyboard) to restart and try to beat
+  Press the RIGHT button (or 'R' on a keyboard) to restart and try to beat
   your time.
 
 
@@ -98,5 +98,5 @@ QUICK REFERENCE
     T          - start the game directly
     SPACE or 0 - manual SCRAM
     W/S        - raise/lower power (only when lever control is off)
-    4          - restart
+    R          - restart
     Q          - quit
