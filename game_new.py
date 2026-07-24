@@ -90,6 +90,13 @@ class System:
     # count as spun up - see the startup-sequence handling in _game_loop.
     LEFT_BUTTON_HOLD_TO_START_S = config.LEFT_BUTTON_HOLD_TO_START_S
 
+    # How long (seconds) the temperature-warning banner stays visible after the last
+    # time temperature was in the warning zone - the same duration as an automatic/
+    # over-power SCRAM's lock (SCRAM_LOCK_DURATION_S * SCRAM_AUTO_LOCK_MULTIPLIER)
+    # rather than a manual SCRAM's shorter one, so it holds steady instead of
+    # flickering as temperature bounces near the threshold.
+    TEMP_WARNING_MIN_HOLD_S = config.SCRAM_LOCK_DURATION_S * config.SCRAM_AUTO_LOCK_MULTIPLIER
+
     # Yellow LED window: a lever's own k_eff contribution counts as "neutral" (not
     # positive/negative) within +-0.0005 of 1.0, rather than requiring it to land on
     # exactly 1.0 - potentiometer/reading inaccuracy meant that never actually happened.
@@ -198,37 +205,33 @@ class System:
 
     def _trigger_scram(self, automatic):
         """SCRAM: immediately drop k_eff by SCRAM_K_EFF_DROP and lock it there,
-        ignoring lever/rod input, until the lock expires (see the per-frame handling
-        in _game_loop) - the resulting power drop plays out through the point-
-        kinetics model itself rather than being forced directly. Also engages the
-        scram rods (see _advance_scram_rods), which stay down even after the lock
-        expires until the operator confirms safe by fully lowering every lever.
-        Guarded by self.scramming so re-triggering (e.g. holding SPACE, or staying
-        above FAILURE_POWER_MW for multiple frames before the drop takes effect)
-        doesn't restack the lock or repeatedly drop k_eff further.
+        ignoring lever/rod input, until the lock ends - which (see the per-frame
+        handling in _game_loop) requires both the lock timer to elapse AND every
+        lever (safety, regulating, shim) to be pushed fully down, confirming the
+        reactor safe, before it releases. The scram rods (see _advance_scram_rods)
+        track self.scramming directly, so they stay down for exactly as long as the
+        lock is held and start raising the instant it releases - never out of sync
+        with it. Guarded by self.scramming so re-triggering (e.g. holding SPACE, or
+        staying above FAILURE_POWER_MW for multiple frames before the drop takes
+        effect) doesn't restack the lock or repeatedly drop k_eff further.
         """
         if self.scramming:
             return
         self.scramming = True
-        self.scram_rods_engaged = True
         self.scram_locked_k_eff = self.pygame_k_eff - self.SCRAM_K_EFF_DROP
         self.pygame_k_eff = self.scram_locked_k_eff
         multiplier = self.SCRAM_AUTO_LOCK_MULTIPLIER if automatic else 1
         self.scram_lock_remaining_s = self.SCRAM_LOCK_DURATION_S * multiplier
 
     def _advance_scram_rods(self, dt):
-        """Scram rods drop the instant a SCRAM triggers and stay down - even after
-        the SCRAM's k_eff lock/cooldown ends - until the operator has manually
-        pushed every lever fully down, confirming the reactor is safe to bring the
-        rods back out. Both the drop and the raise are drawn out over
+        """Scram rods track self.scramming directly: down for exactly as long as the
+        SCRAM lock is held (which itself now requires every lever fully down before
+        it releases - see _trigger_scram/_game_loop), raising the instant it's
+        released. Both the drop and the raise are drawn out over
         SCRAM_ROD_TRAVEL_TIME_S rather than snapping instantly, same technique as
         _advance_effective_levers.
         """
-        if self.scram_rods_engaged and not self.scramming:
-            if all(pos >= 1.0 for pos in self.effective_lever_pos):
-                self.scram_rods_engaged = False
-
-        target = 1.0 if self.scram_rods_engaged else 0.0
+        target = 1.0 if self.scramming else 0.0
         delay = self.SCRAM_ROD_TRAVEL_TIME_S
         if delay <= 0:
             self.scram_rod_insertion = target
@@ -268,8 +271,10 @@ class System:
         self.scramming = False
         self.scram_lock_remaining_s = 0.0
         self.scram_locked_k_eff = self.BASE_K_EFF
-        self.scram_rods_engaged = False
         self.scram_rod_insertion = 0.0
+
+        self.temp_warning_active = False
+        self.temp_warning_hold_remaining_s = 0.0
 
         # Startup sequence: hold the left button (pumps) for LEFT_BUTTON_HOLD_TO_START_S
         # to spin the pumps up, then press right to start the reactor. Pumps stay
@@ -278,7 +283,7 @@ class System:
         self.pumps_activated = False
 
         # Tied to the levers' real combined ceiling so pygame_k_eff is never clamped
-        # short of what the levers can actually produce, and "MAXIMUM!" can display.
+        # short of what the levers can actually produce.
         self.max_allowable_k_eff = self.BASE_K_EFF
 
         self.running = False
@@ -314,20 +319,24 @@ class System:
         elapsed = time.time() - self.graph_start_time
         self.graph.record_sample(elapsed, self._display_power())
 
+    def _is_max_k_eff(self):
+        """"MAXIMUM!" only when every negative influence on k_eff is off: the safety
+        and regulating rods and the chemical shim all fully withdrawn (0), and every
+        coolant pump switch off - since both rod/shim insertion and mass flow now
+        subtract from k_eff, it isn't at its true ceiling unless both are absent.
+        """
+        return (all(pos == 0.0 for pos in self.effective_lever_pos)
+                and not any(self.panel_states.switch_states.values()))
+
     def _update_graph(self):
         elapsed = time.time() - self.graph_start_time
-        # "MAXIMUM!" reflects the lever/keyboard input being pinned at its own ceiling
-        # (pygame_k_eff), not the final k_eff - which, with the mass-flow penalty now
-        # part of it, has no single fixed maximum (it depends on how many pumps are on).
-        is_max_k_eff = self.pygame_k_eff == self.max_allowable_k_eff
-        self.graph.render_live(elapsed, self._display_power(), self.k_eff, is_max_k_eff,
+        self.graph.render_live(elapsed, self._display_power(), self.k_eff, self._is_max_k_eff(),
                                 self.time_at_target_condition)
         self.graph.blit_to(self.screen)
 
     def _draw_final_graph(self):
-        is_max_k_eff = self.pygame_k_eff == self.max_allowable_k_eff
         self.graph.render_final(self.final_elapsed_time, self._display_power(), self.k_eff,
-                                 is_max_k_eff, self.time_at_target_condition)
+                                 self._is_max_k_eff(), self.time_at_target_condition)
         self.graph.blit_to(self.screen)
 
     def _init_reactor_vessel(self):
@@ -354,6 +363,27 @@ class System:
 
     def _draw_thermometer(self, temp):
         self.thermometer.draw(self.screen, temp)
+
+    def _init_temp_warning(self):
+        self.temp_warning = diagrams.TempWarningRenderer()
+
+    def _advance_temp_warning(self, dt):
+        """The warning goes active the instant temperature enters the thermometer's
+        own amber zone (diagrams.DIAL_WARN_C - the same threshold the dial itself
+        turns amber at), and stays active for at least TEMP_WARNING_MIN_HOLD_S after
+        the last time that was true, so it doesn't flicker on/off as temperature
+        hovers near the threshold.
+        """
+        if self.temperature >= diagrams.DIAL_WARN_C:
+            self.temp_warning_active = True
+            self.temp_warning_hold_remaining_s = self.TEMP_WARNING_MIN_HOLD_S
+        elif self.temp_warning_hold_remaining_s > 0.0:
+            self.temp_warning_hold_remaining_s -= dt
+            if self.temp_warning_hold_remaining_s <= 0.0:
+                self.temp_warning_active = False
+
+    def _draw_temp_warning(self):
+        self.temp_warning.draw(self.screen, self.temp_warning_active)
 
     def _load_leaderboard(self):
         entries = []
@@ -487,6 +517,7 @@ class System:
             self._init_reactor_vessel()
             self._init_pump_panel()
             self._init_thermometer()
+            self._init_temp_warning()
         return self._game_loop()
 
     def _game_loop(self):
@@ -619,6 +650,8 @@ class System:
                 temp_rate = self.temperature_model.fuel_temperature_rate(
                     self._current_mass_flow_rate(), self.pk.n * 1e6, self.temperature)
                 self.temperature += temp_rate * (self.clock.get_time() / 1000.0)
+                if self.pk_n_animation:
+                    self._advance_temp_warning(self.clock.get_time() / 1000.0)
                 if self.temperature > config.SCRAM_TEMPERATURE_C:
                     self._trigger_scram(automatic=True)
 
@@ -657,10 +690,14 @@ class System:
             if self.scramming:
                 # clock.get_time() is the actual duration of the previous frame, in
                 # ms - see the time_at_target_condition comment above for why the
-                # nominal frame_time isn't used instead.
+                # nominal frame_time isn't used instead. The lock only releases once
+                # the timer has elapsed AND every lever (safety, regulating, shim) is
+                # pushed fully down - confirming the reactor safe - not from the timer
+                # alone, so the scram rods (which track self.scramming - see
+                # _advance_scram_rods) never stay down after "the scram has ended".
                 self.scram_lock_remaining_s -= self.clock.get_time() / 1000.0
                 self.pygame_k_eff = self.scram_locked_k_eff
-                if self.scram_lock_remaining_s <= 0.0:
+                if self.scram_lock_remaining_s <= 0.0 and all(pos >= 1.0 for pos in self.effective_lever_pos):
                     self.scramming = False
             else:
                 self.pygame_k_eff += self.inc if self.lifting_rod else 0
@@ -676,21 +713,23 @@ class System:
 
             self._draw_fps()
             if self.pk_n_animation:
-                # The right column shows the coolant-pump panel and the live fuel-
-                # temperature dial during play; the leaderboard only takes over that
+                # The pump panel sits above the graph regardless of victory state. The
+                # right column shows a temperature-SCRAM warning banner above the live
+                # fuel-temperature dial during play; the leaderboard takes over that
                 # whole column once the game has been won.
+                self._draw_pump_panel()
                 if victory_flag:
                     self._draw_leaderboard()
                 else:
-                    self._draw_pump_panel()
+                    self._draw_temp_warning()
                     self._draw_thermometer(self.temperature)
                 # Safety (left lever) and regulating (mid lever) rods track their
                 # levers' effective (drawn-out) positions and are unaffected by a SCRAM.
-                # The scram rods track scram_rod_insertion, which drops on a SCRAM and
-                # only raises again once _advance_scram_rods' reset conditions are met
-                # (see that method) - both drawn out over SCRAM_ROD_TRAVEL_TIME_S rather
-                # than snapping instantly. The right lever is now chemical shim: its
-                # effective position reddens the coolant.
+                # The scram rods track scram_rod_insertion, which follows self.scramming
+                # (see _advance_scram_rods) - down for as long as the SCRAM lock is held,
+                # raising the instant it releases - both drawn out over
+                # SCRAM_ROD_TRAVEL_TIME_S rather than snapping instantly. The right lever
+                # is now chemical shim: its effective position reddens the coolant.
                 eff = self.effective_lever_pos
                 rod_insertions = {
                     "safety": min(max(eff[0], 0.0), 1.0),

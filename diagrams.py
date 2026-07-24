@@ -55,17 +55,23 @@ LEADERBOARD_ORIGIN_PX = (GRAPH_ORIGIN_PX[0] + GRAPH_SIZE_PX[0] + 20, GRAPH_ORIGI
 LEADERBOARD_SIZE_PX = (WIDTH - LEADERBOARD_ORIGIN_PX[0], GRAPH_SIZE_PX[1])
 LEADERBOARD_MAX_ENTRIES = 20
 
-# Pre-victory, the right column is split into a coolant-pump indicator panel
-# stacked above the fuel-temperature dial (moved lower to make room for it).
-# Post-victory, the leaderboard takes over the whole column (LEADERBOARD_* above).
-PUMP_PANEL_ORIGIN_PX = LEADERBOARD_ORIGIN_PX
-PUMP_PANEL_SIZE_PX = (LEADERBOARD_SIZE_PX[0], 170)
-PUMP_PANEL_GAP_PX = 20
+# The coolant-pump panel lives in the strip above the graph (same width as the
+# graph, with a small margin top and bottom), out of the way of everything else.
+PUMP_PANEL_ORIGIN_PX = (GRAPH_ORIGIN_PX[0], 10)
+PUMP_PANEL_SIZE_PX = (GRAPH_SIZE_PX[0], GRAPH_ORIGIN_PX[1] - 20)
+
+# Pre-victory, the right column is split into a temperature-warning banner (blank
+# until a temperature SCRAM is near, then flashes) stacked above the fuel-
+# temperature dial - taking the slot the pump panel used to occupy. Post-victory,
+# the leaderboard takes over the whole column (LEADERBOARD_* above).
+TEMP_WARNING_ORIGIN_PX = LEADERBOARD_ORIGIN_PX
+TEMP_WARNING_SIZE_PX = (LEADERBOARD_SIZE_PX[0], 170)
+TEMP_WARNING_GAP_PX = 20
 
 THERMO_ORIGIN_PX = (LEADERBOARD_ORIGIN_PX[0],
-                     PUMP_PANEL_ORIGIN_PX[1] + PUMP_PANEL_SIZE_PX[1] + PUMP_PANEL_GAP_PX)
+                     TEMP_WARNING_ORIGIN_PX[1] + TEMP_WARNING_SIZE_PX[1] + TEMP_WARNING_GAP_PX)
 THERMO_SIZE_PX = (LEADERBOARD_SIZE_PX[0],
-                   LEADERBOARD_SIZE_PX[1] - PUMP_PANEL_SIZE_PX[1] - PUMP_PANEL_GAP_PX)
+                   LEADERBOARD_SIZE_PX[1] - TEMP_WARNING_SIZE_PX[1] - TEMP_WARNING_GAP_PX)
 DIAL_MIN_C = 500
 DIAL_MAX_C = config.SCRAM_TEMPERATURE_C + 100   # a little headroom past the scram line
 DIAL_WARN_C = config.SCRAM_TEMPERATURE_C - 200  # amber zone begins here
@@ -677,9 +683,42 @@ class ThermometerRenderer:
         screen.blit(surf, THERMO_ORIGIN_PX)
 
 
+class TempWarningRenderer:
+    """A banner in the right column, above the fuel-temperature dial, in the slot
+    the pump panel used to occupy. Blank while temperature is in no danger of
+    tripping an over-temperature SCRAM; once active, flashes a warning so it reads
+    as urgent rather than blending into the rest of the (mostly static) HUD.
+    """
+
+    FLASH_PERIOD_MS = 500
+
+    def __init__(self):
+        self.surface = pygame.Surface((int(TEMP_WARNING_SIZE_PX[0]), int(TEMP_WARNING_SIZE_PX[1])))
+        self.title_font = pygame.font.Font(FONT_PATH, 26)
+        self.note_font = pygame.font.Font(FONT_PATH, 16)
+
+    def draw(self, screen, active):
+        """active: whether a temperature SCRAM is currently considered "near" - see
+        System.temp_warning_active in game_new.py for exactly when that's true.
+        """
+        surf = self.surface
+        surf.fill(BLACK)
+
+        if active and (pygame.time.get_ticks() // self.FLASH_PERIOD_MS) % 2 == 0:
+            pygame.draw.rect(surf, RED, surf.get_rect(), 4)
+            title = self.title_font.render("TEMPERATURE WARNING", True, RED)
+            surf.blit(title, (surf.get_width() // 2 - title.get_width() // 2,
+                              surf.get_height() // 2 - title.get_height()))
+            note = self.note_font.render("SCRAM IMMINENT", True, RED)
+            surf.blit(note, (surf.get_width() // 2 - note.get_width() // 2,
+                             surf.get_height() // 2 + 6))
+
+        screen.blit(surf, TEMP_WARNING_ORIGIN_PX)
+
+
 class PumpPanelRenderer:
     """A row of indicator boxes, one per coolant-pump switch: lit green when on,
-    dark when off. Sits above the temperature dial in the right column.
+    dark when off. Sits in the strip above the graph.
     """
 
     BOX_SIZE_PX = 46
