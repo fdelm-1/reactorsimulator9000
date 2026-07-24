@@ -621,7 +621,7 @@ class System:
                         self._clear_leaderboard()
 
                 elif event.type == pygame.KEYUP:
-                    if event.key == pygame.K_1 and not self.running:
+                    if event.key == pygame.K_t and not self.running:
                         ##!! Start the game
                         self.screen.fill((0, 50, 0))
                         self.running = True
