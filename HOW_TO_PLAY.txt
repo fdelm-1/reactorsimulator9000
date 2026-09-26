@@ -61,9 +61,10 @@ STEP 5 - WATCH THE WARNINGS
 
   If a SCRAM happens (automatic or by pressing the left button/SPACE
   yourself): the reactor is not dead, but the SCRAM rods slam in and you
-  lose k_eff. To recover: push all three levers all the way back down and
-  wait a few seconds - only once BOTH of those are true does control return
-  to you and the SCRAM rods start withdrawing again. Then go back to step 3.
+  lose k_eff. To recover: push all three levers all the way back down (on
+  a keyboard, hold S instead) and wait a few seconds - only once BOTH of
+  those are true does control return to you and the SCRAM rods start
+  withdrawing again. Then go back to step 3.
 
 
 STEP 6 - WIN
