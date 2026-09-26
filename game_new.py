@@ -252,16 +252,27 @@ class System:
         pygame.init()
         # Reuse the existing window across restarts (a new System is created each
         # restart) instead of tearing it down and recreating it via set_mode() again.
-        self.screen = pygame.display.get_surface()
-        if self.screen is None:
-            # pygame.SCALED: keep rendering to a fixed WIDTHxHEIGHT logical surface
-            # (every diagram position is hardcoded against it) while pygame scales
-            # the real OS window to fit whatever the display can actually show.
-            # Without it, on a Mac with a Retina/HiDPI display, set_mode(WIDTH,
-            # HEIGHT) can create an actual window rendered at the display's full
-            # pixel density - up to ~2x the intended size, bigger than the screen.
-            self.screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.SCALED)
+        self.window = pygame.display.get_surface()
+        if self.window is None:
+            # Fit the real OS window to the current desktop, rather than always
+            # opening at the game's native WIDTHxHEIGHT: on a Mac with a Retina/
+            # HiDPI display (or simply a smaller screen), a window that size can
+            # end up larger than the visible screen. pygame.SCALED alone doesn't
+            # reliably fix this on HiDPI displays (a known pygame limitation), so
+            # this is done by hand instead: self.screen (below) stays a fixed
+            # WIDTHxHEIGHT logical canvas - every diagram position is hardcoded
+            # against it - and _present() scales it onto the real window,
+            # whatever size that ends up being, once per frame.
+            display_info = pygame.display.Info()
+            desktop_w = display_info.current_w or WIDTH
+            desktop_h = display_info.current_h or HEIGHT
+            # Leave a margin for window chrome/the menu bar/a taskbar rather than
+            # filling the desktop exactly edge to edge; never scale up past 1:1.
+            scale = min(1.0, (desktop_w * 0.9) / WIDTH, (desktop_h * 0.85) / HEIGHT)
+            window_size = (max(1, round(WIDTH * scale)), max(1, round(HEIGHT * scale)))
+            self.window = pygame.display.set_mode(window_size)
             pygame.display.set_caption("Reactor Simulator 9000")
+        self.screen = pygame.Surface((WIDTH, HEIGHT))
         self.clock = pygame.time.Clock()
         self.fps_font = pygame.font.Font(FONT_PATH, 20)
 
@@ -425,6 +436,18 @@ class System:
             y += rendered_line.get_height()
 
         self.screen.blit(popup_surface, (WIDTH // 2 - POPUP_WIDTH // 2, POPUP_TOP_MARGIN))
+        self._present()
+
+    def _present(self):
+        """Scale the fixed WIDTHxHEIGHT logical canvas (self.screen) onto the real
+        window (self.window, sized to fit the desktop - see _init_display) and
+        flip it to the display. The one place that actually shows a frame - every
+        other draw call only touches self.screen.
+        """
+        if self.window.get_size() == self.screen.get_size():
+            self.window.blit(self.screen, (0, 0))
+        else:
+            pygame.transform.smoothscale(self.screen, self.window.get_size(), self.window)
         pygame.display.flip()
 
     def _draw_fps(self):
@@ -758,7 +781,7 @@ class System:
 
             # Wait for the next frame
             self.clock.tick(self.frame_rate)
-            pygame.display.flip()
+            self._present()
 
         # Clean up
         if restart_flag:
