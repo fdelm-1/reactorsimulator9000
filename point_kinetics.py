@@ -62,7 +62,13 @@ class PointKinetics:
         self.n_history = False
     
     def reset_sol(self):
-        self.sol = self.initial_solution
+        # .copy(), not a bare reference: initial_solution defaults to the module-level
+        # wikipedia_precursors_stable_solution array, shared by every PointKinetics
+        # instance that doesn't pass its own. Aliasing self.sol straight to it would
+        # let any later in-place write through self.sol (e.g. the n property setter,
+        # which does self.sol[-1] = value) silently corrupt that shared "initial"
+        # array for every PointKinetics created afterwards, for the rest of the process.
+        self.sol = self.initial_solution.copy()
 
     def enable_n_history(self, back_duration, dt):
         self.n_history = True

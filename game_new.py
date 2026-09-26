@@ -200,14 +200,15 @@ class System:
     def _trigger_scram(self, automatic):
         """SCRAM: immediately drop k_eff by SCRAM_K_EFF_DROP and lock it there,
         ignoring lever/rod input, until the lock ends - which (see the per-frame
-        handling in _game_loop) requires both the lock timer to elapse AND every
-        lever (safety, regulating, shim) to be pushed fully down, confirming the
-        reactor safe, before it releases. The scram rods (see _advance_scram_rods)
-        track self.scramming directly, so they stay down for exactly as long as the
-        lock is held and start raising the instant it releases - never out of sync
-        with it. Guarded by self.scramming so re-triggering (e.g. holding SPACE, or
-        staying above FAILURE_POWER_MW for multiple frames before the drop takes
-        effect) doesn't restack the lock or repeatedly drop k_eff further.
+        handling in _game_loop) requires both the lock timer to elapse AND the
+        reactor to be confirmed safe (every lever pushed fully down, or - with no
+        levers to check in keyboard mode - holding S), before it releases. The
+        scram rods (see _advance_scram_rods) track self.scramming directly, so
+        they stay down for exactly as long as the lock is held and start raising
+        the instant it releases - never out of sync with it. Guarded by
+        self.scramming so re-triggering (e.g. holding SPACE, or staying above
+        FAILURE_POWER_MW for multiple frames before the drop takes effect)
+        doesn't restack the lock or repeatedly drop k_eff further.
         """
         if self.scramming:
             return
@@ -219,9 +220,9 @@ class System:
 
     def _advance_scram_rods(self, dt):
         """Scram rods track self.scramming directly: down for exactly as long as the
-        SCRAM lock is held (which itself now requires every lever fully down before
-        it releases - see _trigger_scram/_game_loop), raising the instant it's
-        released. Both the drop and the raise are drawn out over
+        SCRAM lock is held (which itself now requires the reactor to be confirmed
+        safe before it releases - see _trigger_scram/_game_loop), raising the
+        instant it's released. Both the drop and the raise are drawn out over
         SCRAM_ROD_TRAVEL_TIME_S rather than snapping instantly, same technique as
         _advance_effective_levers.
         """
@@ -253,7 +254,13 @@ class System:
         # restart) instead of tearing it down and recreating it via set_mode() again.
         self.screen = pygame.display.get_surface()
         if self.screen is None:
-            self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
+            # pygame.SCALED: keep rendering to a fixed WIDTHxHEIGHT logical surface
+            # (every diagram position is hardcoded against it) while pygame scales
+            # the real OS window to fit whatever the display can actually show.
+            # Without it, on a Mac with a Retina/HiDPI display, set_mode(WIDTH,
+            # HEIGHT) can create an actual window rendered at the display's full
+            # pixel density - up to ~2x the intended size, bigger than the screen.
+            self.screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.SCALED)
             pygame.display.set_caption("Reactor Simulator 9000")
         self.clock = pygame.time.Clock()
         self.fps_font = pygame.font.Font(FONT_PATH, 20)
@@ -690,13 +697,23 @@ class System:
                 # clock.get_time() is the actual duration of the previous frame, in
                 # ms - see the time_at_target_condition comment above for why the
                 # nominal frame_time isn't used instead. The lock only releases once
-                # the timer has elapsed AND every lever (safety, regulating, shim) is
-                # pushed fully down - confirming the reactor safe - not from the timer
-                # alone, so the scram rods (which track self.scramming - see
-                # _advance_scram_rods) never stay down after "the scram has ended".
+                # the timer has elapsed AND the reactor is confirmed safe - not from
+                # the timer alone, so the scram rods (which track self.scramming -
+                # see _advance_scram_rods) never stay down after "the scram has
+                # ended". With real levers, "confirmed safe" means every lever
+                # (safety, regulating, shim) pushed fully down. There's no lever
+                # position to check in keyboard mode (KeyboardControlPanelStates
+                # reports a fixed reading that never reaches 1.0, which would
+                # otherwise leave the scram rods stuck down forever), so there the
+                # equivalent is simply holding S (lowering_rod) at the moment the
+                # timer elapses.
                 self.scram_lock_remaining_s -= self.clock.get_time() / 1000.0
                 self.pygame_k_eff = self.scram_locked_k_eff
-                if self.scram_lock_remaining_s <= 0.0 and all(pos >= 1.0 for pos in self.effective_lever_pos):
+                if use_levers_flag:
+                    confirmed_safe = all(pos >= 1.0 for pos in self.effective_lever_pos)
+                else:
+                    confirmed_safe = self.lowering_rod
+                if self.scram_lock_remaining_s <= 0.0 and confirmed_safe:
                     self.scramming = False
             else:
                 self.pygame_k_eff += self.inc if self.lifting_rod else 0

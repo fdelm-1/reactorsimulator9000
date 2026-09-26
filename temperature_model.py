@@ -232,6 +232,20 @@ class TemperatureModel:
             * self.total_resistance(core_mass_flow_rate)
         )
 
+    # --- Steady state ---
+
+    def steady_state_fuel_temp(self, core_mass_flow_rate, core_thermal_power):
+        """
+        Steady-state (dT_f/dt = 0) volume-average fuel temperature, K: the
+        fuel temperature at which heat generated per rod exactly equals heat
+        removed to the coolant, found by solving fuel_temperature_rate's
+        numerator for fuel_temp.
+        """
+        u_overall = self.overall_heat_transfer_coefficient(core_mass_flow_rate)
+        return self.coolant_temp + self.power_per_rod(core_thermal_power) / (
+            u_overall * self.heat_transfer_area
+        )
+
     # --- Transient ---
 
     def fuel_temperature_rate(

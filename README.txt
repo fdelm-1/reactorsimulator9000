@@ -171,10 +171,12 @@ need to withdraw a lever slightly to compensate for turning more pumps on
     SCRAM_K_EFF_DROP and the four amber-capped SCRAM rods slam fully into
     the core. This lock does NOT release on a timer alone: it needs BOTH a
     minimum hold time to elapse (2 seconds for a manual SCRAM, 4 seconds for
-    an automatic one) AND every lever to be pushed all the way back down,
-    confirming the reactor safe, before it will release and let the SCRAM
-    rods start withdrawing again. If you don't push the levers down, the
-    lock - and the dropped rods - will simply stay engaged indefinitely.
+    an automatic one) AND the reactor confirmed safe, before it will release
+    and let the SCRAM rods start withdrawing again. With real levers, that
+    means every lever pushed all the way back down; on the keyboard (no
+    levers to check), it means holding S at that moment instead. If you
+    don't do that, the lock - and the dropped rods - will simply stay
+    engaged indefinitely.
   - A SCRAM does not end your run - the game keeps going afterwards, so
     you can recover and still go for the target band. But every SCRAM costs
     you time (and the recovery procedure above takes active effort), so
@@ -269,9 +271,12 @@ need to withdraw a lever slightly to compensate for turning more pumps on
         startup sequence (section 3.1) can never actually succeed on
         desktop; use T to start instead (see 4.2).
       - No physical buttons, so the left/right-button bindings (manual
-        SCRAM once running, restart) never fire either - use SPACE/0 and 4.
+        SCRAM once running, restart) never fire either - use SPACE/0 and R.
       - WindowsSystem.USE_LEVERS_BY_DEFAULT is False, so k_eff is driven by
-        the W/S keyboard nudges instead of lever position.
+        the W/S keyboard nudges instead of lever position. Since there are
+        no levers to check "all pushed down" after a SCRAM either, the
+        reactor-confirmed-safe check (section 3.4) instead requires holding
+        S at the moment the SCRAM's lock timer elapses.
 
 
 ==============================================================================
